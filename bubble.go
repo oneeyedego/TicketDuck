@@ -5,58 +5,77 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	lipgloss "github.com/charmbracelet/lipgloss"
 )
 
-// The model
+// ---[ Lip Gloss Styles ]-----------------------------------------------------
+
+var (
+	titleStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(lipgloss.Color("#7D56F4")).
+			Padding(0, 1)
+
+	cursorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#04B575")).
+			Bold(true)
+
+	selectedStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF5F87")).
+			Bold(true)
+
+	checkedStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#A550DF"))
+
+	dimStyle = lipgloss.NewStyle().
+			Faint(true)
+)
+
+// ---[ Model ]----------------------------------------------------------------
 
 type model struct {
 	choices  []string         // items to choose from
-	cursor   int              // the current selection our cursor is poitning at
+	cursor   int              // the current selection our cursor is pointing at
 	selected map[int]struct{} // set of selected items
-
 }
 
 func initialModel() model {
 	return model{
-		// The choices we want to display
-		choices: []string{"Carrots", "Beets", "Asparagus", "Broccoli", "Cabbage", "Dill", "Potatoes"},
-
-		// a map for storing which choices are selected. The keys refer to the indexes of the choices slice above.
+		choices: []string{
+			"Carrots",
+			"Beets",
+			"Asparagus",
+			"Broccoli",
+			"Cabbage",
+			"Dill",
+			"Potatoes",
+		},
 		selected: make(map[int]struct{}),
 	}
 }
 
+// ---[ Bubble Tea interface ]-------------------------------------------------
+
 func (m model) Init() tea.Cmd {
-	// No IO for the moment, so we return nil
 	return nil
 }
-
-// Methods
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-
 		switch msg.String() {
-
-		// Quit the program when q or ctrl+c is pressed
 		case "ctrl+c", "q":
 			return m, tea.Quit
-
-		// Move the cursor up when k or the up arrow is pressed
-		case "up", "k":
+		case "k", "up":
 			if m.cursor > 0 {
 				m.cursor--
 			}
-
-		// Move the cursor down when j or the down arrow is pressed
-		case "down", "j":
+		case "j", "down":
 			if m.cursor < len(m.choices)-1 {
 				m.cursor++
 			}
-
-		// Toggle the selected state of the item when space or enter is pressed
-		case "enter", " ":
+		case " ", "enter":
 			if _, ok := m.selected[m.cursor]; ok {
 				delete(m.selected, m.cursor)
 			} else {
@@ -64,48 +83,47 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-
-	// Return the updated model
 	return m, nil
 }
 
-// The view
-
 func (m model) View() string {
-	s := "What should we buy at the grocery store?\n\n"
+	// Title
+	s := titleStyle.Render("What should we buy at the grocery store?") + "\n\n"
 
-	// Iterate over the choices
+	// List
 	for i, choice := range m.choices {
-		// If the cursor is pointing at this choice, we'll highlight it
-		cursor := " " // no cursor
+		// Determine cursor
+		cursor := " "
 		if m.cursor == i {
-			cursor = ">" // cursor
+			cursor = cursorStyle.Render(">")
+		}
+		// Determine selected state
+		checked := " "
+		_, isSelected := m.selected[i]
+		if isSelected {
+			checked = checkedStyle.Render("x")
 		}
 
-		// If the choice is selected, we'll add an "x" to the beginning
-		checked := " " // not selected
-		if _, ok := m.selected[i]; ok {
-			checked = "x" // selected
+		// Style the choice differently if it's selected
+		line := fmt.Sprintf("%s [%s] %s", cursor, checked, choice)
+		if isSelected {
+			line = selectedStyle.Render(line)
 		}
 
-		// Render the row
-		s += fmt.Sprintf("%s [%s] %s\n", cursor, checked, choice)
-
+		// Apply a faint/dim style if the item is neither selected nor under cursor
+		if m.cursor != i && !isSelected {
+			line = dimStyle.Render(line)
+		}
+		s += line + "\n"
 	}
 
-	s += "\n Press q to quit.\n"
-
-	// Send the UI for rendering
+	s += "\nPress q to quit.\n"
 	return s
-
 }
 
-// The main function
-
 func main() {
-	p := tea.NewProgram(initialModel())
-	if err := p.Start(); err != nil {
-		fmt.Printf("Error starting program: %v", err)
+	if err := tea.NewProgram(initialModel()).Start(); err != nil {
+		fmt.Printf("Error starting program: %v\n", err)
 		os.Exit(1)
 	}
 }
