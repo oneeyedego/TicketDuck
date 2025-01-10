@@ -6,4 +6,9 @@ There's no one right way to use this tool, but here's a suggestion:
 2. Commit Messages: What did you do? Why did you do it? What did you learn?
 3. Service Requests: What do you want? Why do you want it? What will you do with it?
 
-Built using BubbleTea: https://github.com/charmbracelet/bubbletea
+Built using Charmbracelet's tools:
+
+https://github.com/charmbracelet/bubbletea (TUI framework)
+https://github.com/charmbracelet/bubbles (TUI components)
+https://github.com/charmbracelet/glamour (Markdown rendering)
+https://github.com/charmbracelet/lipgloss (CSS-like styling)

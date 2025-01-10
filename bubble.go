@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -16,10 +17,47 @@ type mode int
 
 const (
 	selectionMode mode = iota
+	questionMode
 	displayMode
 )
 
 // ---[ Lip Gloss Styles ]-----------------------------------------------------
+
+type formType struct {
+	name      string
+	questions []string
+}
+
+var formTypes = []formType{
+	{
+		name: "Incident Report",
+		questions: []string{
+			"What happened?",
+			"What did you do?",
+			"Why did you do it?",
+			"Did it work? If not, what was the result?",
+			"What did you learn?",
+		},
+	},
+	{
+		name: "Pull Request/Commit Message",
+		questions: []string{
+			"What did you do?",
+			"Why did you do it?",
+			"How did you do it?",
+			"What did you learn?",
+		},
+	},
+	{
+		name: "Service Request",
+		questions: []string{
+			"What do you want?",
+			"Why do you want it?",
+			"How do you want it?",
+			"What will you do with it?",
+		},
+	},
+}
 
 var (
 	titleStyle = lipgloss.NewStyle().
@@ -52,9 +90,15 @@ type model struct {
 	currentMode mode
 
 	// For selection mode:
-	choices  []string
-	cursor   int
-	selected map[int]struct{}
+	formTypes     []formType
+	cursor        int
+	selectedIndex int // The index of the selected item, where -1 means no item is selected
+
+	// For rubric mode:
+	currentForm     formType
+	answers         []string
+	currentQuestion int
+	inputString     string
 
 	// For display mode:
 	viewport viewport.Model
@@ -62,51 +106,224 @@ type model struct {
 	content string
 }
 
-// initialModel sets up the grocery items, selection data, and an uninitialized viewport.
+// initialModel sets up the choicebox, selection data, and an uninitialized viewport.
 func initialModel() model {
 	return model{
-		currentMode: selectionMode,
-		choices: []string{
-			"Carrots",
-			"Beets",
-			"Asparagus",
-			"Broccoli",
-			"Cabbage",
-			"Dill",
-			"Potatoes",
-		},
-		selected: make(map[int]struct{}),
-		viewport: viewport.Model{}, // We'll configure it later, in code
+		currentMode:   selectionMode,
+		formTypes:     formTypes,
+		selectedIndex: -1,
+		answers:       []string{},
+		viewport:      viewport.Model{}, // We'll configure this later
 	}
 }
 
-// ---[ Helper: Build and Render Markdown ]------------------------------------
+// ---[ [Bubbletea interface] ]-------------------------------------------------
+
+func (m model) Init() tea.Cmd {
+	return nil
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch m.currentMode {
+	case selectionMode:
+		return m.updateSelectionMode(msg)
+	case questionMode:
+		return m.updateQuestionMode(msg)
+	case displayMode:
+		return m.updateDisplayMode(msg)
+	default:
+		return m, nil
+	}
+}
+
+func (m model) updateSelectionMode(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+
+	case tea.KeyMsg:
+		switch msg.String() {
+
+		case "ctrl+c", "q":
+			// If we're in display mode, pressing q just quits.
+			// If we're in selection mode and we haven't pressed "enter" yet,
+			// let's also quit. You could handle these differently if you wish.
+			return m, tea.Quit
+
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.cursor < len(m.formTypes)-1 {
+				m.cursor++
+			}
+		case " ", "enter":
+			if m.currentMode == selectionMode {
+				// Toggle selection: since it's single-selection,
+				// selecting a new item deselects the previous one.
+				if m.selectedIndex == m.cursor {
+					// Deselect if already selected
+					m.selectedIndex = -1
+				} else {
+					m.selectedIndex = m.cursor
+					m.currentForm = m.formTypes[m.selectedIndex]
+					m.currentMode = questionMode
+					m.answers = make([]string, len(m.currentForm.questions))
+					m.currentQuestion = 0
+				}
+			}
+		}
+	}
+
+	return m, nil
+}
+
+func (m model) updateQuestionMode(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyEsc, tea.KeyCtrlC:
+			return m, tea.Quit
+		case tea.KeyEnter:
+			// Save the current input as an answer
+			m.answers[m.currentQuestion] = strings.TrimSpace(m.inputString)
+			m.inputString = ""
+
+			// Move on to the next question or finish
+			if m.currentQuestion < len(m.currentForm.questions)-1 {
+				m.currentQuestion++
+			} else {
+				// We're done with the form, so it's time to generate the Markdown and switch modes
+				md := buildSelectedMarkdown(m)
+				if err := renderMarkdownToViewport(md, &m.viewport); err != nil {
+					// If there's an error rendering the Markdown, just print it out
+					log.Fatal(err)
+				}
+				m.content = md
+				m.currentMode = displayMode
+			}
+		case tea.KeyBackspace, tea.KeyDelete:
+			if len(m.inputString) > 0 {
+				m.inputString = m.inputString[:len(m.inputString)-1] // Delete the last character
+			}
+
+		default:
+			if msg.Type == tea.KeyRunes {
+				m.inputString += msg.String()
+			}
+		}
+	}
+
+	return m, nil
+}
+
+func (m model) updateDisplayMode(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "q", "ctrl+c":
+			// Quit
+			return m, tea.Quit
+
+		default:
+			// Pass all other keys to the viewport for scrolling
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
+		}
+	}
+
+	return m, nil
+}
+
+// --- [View] ----------------------------------------------------------------
+
+func (m model) View() string {
+	switch m.currentMode {
+
+	case selectionMode:
+		return m.viewSelectionMode()
+
+	case questionMode:
+		return m.viewQuestionMode()
+
+	case displayMode:
+		return m.viewDisplayMode()
+
+	default:
+		return "Unknown mode."
+
+	}
+}
+
+// View rendering for Selection Mode
+func (m model) viewSelectionMode() string {
+	s := titleStyle.Render("Select Report Type") + "\n\n"
+
+	for i, rt := range m.formTypes {
+		cursor := "  "
+		if m.cursor == i {
+			cursor = cursorStyle.Render(">")
+		}
+
+		line := fmt.Sprintf("%s %s", cursor, rt.name)
+
+		if m.cursor == i {
+			line = selectedStyle.Render(line)
+		} else {
+			line = dimStyle.Render(line)
+		}
+
+		s += line + "\n"
+	}
+
+	s += "\nUse ↑/↓ or k/j to navigate. Press Enter or Space to select.\n"
+	s += "Press q to quit.\n"
+
+	return s
+}
+
+// View rendering for Question Mode
+func (m model) viewQuestionMode() string {
+	currentQ := m.currentForm.questions[m.currentQuestion]
+	inputLine := "> " + m.inputString
+
+	s := titleStyle.Render(fmt.Sprintf("%s - Question %d/%d", m.currentForm.name, m.currentQuestion+1, len(m.currentForm.questions))) + "\n\n"
+	s += fmt.Sprintf("**%s**\n\n", currentQ)
+	s += inputLine
+
+	s += "\n\nPress Enter to submit your answer.\n"
+	s += "Press Esc or q to quit.\n"
+
+	return s
+}
+
+// View rendering for Display Mode
+func (m model) viewDisplayMode() string {
+	s := titleStyle.Render("Generated Report") + "\n\n"
+	s += m.viewport.View() + helpStyle.Render("\n  ↑/↓: Scroll • q: Quit\n")
+	return s
+}
+
+// --- [ Helper functions ] ------------------------------------
 
 // buildSelectedMarkdown returns a string of Markdown reflecting the selected items.
 func buildSelectedMarkdown(m model) string {
 	var sb strings.Builder
 
-	sb.WriteString("# Grocery List\n\n")
-	sb.WriteString("These items have been selected:\n\n")
-
-	for i := range m.selected {
-		sb.WriteString(fmt.Sprintf("- %s\n", m.choices[i]))
+	sb.WriteString(fmt.Sprintf("# %s\n\n", m.currentForm.name))
+	for i, question := range m.currentForm.questions {
+		sb.WriteString(fmt.Sprintf("## %d. %s\n\n", i+1, question))
+		if i < len(m.answers) {
+			sb.WriteString(fmt.Sprintf("%s\n\n", m.answers[i]))
+		}
 	}
-
-	// If no items selected, mention that:
-	if len(m.selected) == 0 {
-		sb.WriteString("\n*No items selected.*\n")
-	}
-
-	// Additional flourish or instructions:
-	sb.WriteString("\n\nBon appétit!\n")
 
 	return sb.String()
 }
 
 // renderMarkdownToViewport uses Glamour to transform the raw markdown into styled text.
 func renderMarkdownToViewport(md string, vp *viewport.Model) error {
-	width := 78 // Arbitrary width; adjust as needed
+	width := 90 // Arbitrary width; adjust as needed
 	// Prepare a Glamour renderer
 	r, err := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
@@ -133,116 +350,7 @@ func renderMarkdownToViewport(md string, vp *viewport.Model) error {
 	return nil
 }
 
-// ---[ Bubble Tea interface ]-------------------------------------------------
-
-func (m model) Init() tea.Cmd {
-	return nil
-}
-
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-
-	case tea.KeyMsg:
-		switch msg.String() {
-
-		case "ctrl+c", "q":
-			// If we're in display mode, pressing q just quits.
-			// If we're in selection mode and we haven't pressed "enter" yet,
-			// let's also quit. You could handle these differently if you wish.
-			return m, tea.Quit
-
-		// Only relevant in selection mode
-		case "up", "k":
-			if m.currentMode == selectionMode && m.cursor > 0 {
-				m.cursor--
-			}
-		case "down", "j":
-			if m.currentMode == selectionMode && m.cursor < len(m.choices)-1 {
-				m.cursor++
-			}
-		case " ", "enter":
-			if m.currentMode == selectionMode {
-				// Toggle the selected state of the item
-				if _, ok := m.selected[m.cursor]; ok {
-					delete(m.selected, m.cursor)
-				} else {
-					m.selected[m.cursor] = struct{}{}
-				}
-			}
-		case "r":
-			// For demonstration, let's say "r" means "Render now!"
-			// We switch to display mode.
-			if m.currentMode == selectionMode {
-				// 1) Build the Markdown from current selection
-				md := buildSelectedMarkdown(m)
-				m.content = md
-
-				// 2) Render with Glamour into the viewport
-				if err := renderMarkdownToViewport(md, &m.viewport); err != nil {
-					fmt.Println("Could not render markdown:", err)
-					return m, tea.Quit
-				}
-
-				// 3) Switch mode
-				m.currentMode = displayMode
-			}
-		}
-
-		// If we’re in display mode, pass the update to the viewport for scroll handling:
-		if m.currentMode == displayMode {
-			var cmd tea.Cmd
-			m.viewport, cmd = m.viewport.Update(msg)
-			return m, cmd
-		}
-
-	}
-
-	return m, nil
-}
-
-func (m model) View() string {
-	switch m.currentMode {
-
-	case selectionMode:
-		// Render the selection list
-		s := titleStyle.Render("What should we buy at the grocery store?") + "\n\n"
-
-		for i, choice := range m.choices {
-			cursor := " "
-			if m.cursor == i {
-				cursor = cursorStyle.Render(">")
-			}
-
-			checked := " "
-			if _, ok := m.selected[i]; ok {
-				checked = checkedStyle.Render("x")
-			}
-
-			line := fmt.Sprintf("%s [%s] %s", cursor, checked, choice)
-
-			if _, ok := m.selected[i]; ok {
-				line = selectedStyle.Render(line)
-			}
-
-			if _, ok := m.selected[i]; m.cursor != i && !ok {
-				line = dimStyle.Render(line)
-			}
-
-			s += line + "\n"
-		}
-		s += "\nPress [↑/↓ or k/j] to move; [space or enter] to toggle selections.\n"
-		s += "Press [r] to render your selection in Glamour or [q] to quit.\n"
-		return s
-
-	case displayMode:
-		// Render the viewport with the Glamour-styled Markdown
-		return m.viewport.View() + helpStyle.Render("\n  ↑/↓: Scroll • q: Quit\n")
-
-	default:
-		return "Unknown mode."
-	}
-}
-
+// ---[ Main ]------------------------------------------------------------
 func main() {
 	p := tea.NewProgram(initialModel())
 	if err := p.Start(); err != nil {
