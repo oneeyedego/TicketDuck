@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +11,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 )
 
 // 1) We define two modes: selecting items or viewing the Glamour-rendered markdown.
@@ -199,6 +202,12 @@ func (m model) updateQuestionMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 					log.Fatal(err)
 				}
 				m.content = md
+
+				ctx := context.TODO() // or a context with timeout
+				if err := makeChatGPTRequest(ctx, &m, md); err != nil {
+					log.Printf("Error from ChatGPT: %v\n", err)
+				}
+
 				m.currentMode = displayMode
 			}
 		case tea.KeyBackspace, tea.KeyDelete:
@@ -348,6 +357,50 @@ func renderMarkdownToViewport(md string, vp *viewport.Model) error {
 		PaddingRight(2)
 
 	return nil
+}
+
+// ---[[ OpenAI API ]]------------------------------------------------------------
+
+// makeChatGPTRequest encapsulates the ChatGPT call & viewport re-rendering.
+func makeChatGPTRequest(ctx context.Context, m *model, md string) error {
+	// Step 1 - Call ChatGPT with the generated response Markdown
+	resp, err := processFormWithChatGPT(ctx, md)
+	if err != nil {
+		return fmt.Errorf("OpenAI request error: %v", err)
+	}
+
+	// Step 2 - Append ChatGPT’s response as an optional "analysis" or "summary"
+	summary := "\n## ChatGPT Analysis\n\n" + resp
+	appendedContent := md + summary
+
+	// Step 3 - Re-render the viewport with the appended content
+	if err := renderMarkdownToViewport(appendedContent, &m.viewport); err != nil {
+		return fmt.Errorf("render markdown error: %v", err)
+	}
+	m.content = appendedContent
+	return nil
+}
+
+func processFormWithChatGPT(ctx context.Context, content string) (string, error) {
+	// Initialize the OpenAI client.
+	// If the key is already in your environment, you can omit `option.WithAPIKey`.
+	client := openai.NewClient(
+		option.WithAPIKey(os.Getenv("OPENAI_API_KEY")), // TODO: Replace with app secret for portability
+	)
+
+	chatCompletion, err := client.Chat.Completions.New(
+		ctx, // Context here allows us to characterize the request, and give it conditions
+		openai.ChatCompletionNewParams{ // This is the message we are sending to ChatGPT
+			Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+				openai.UserMessage(content),
+			}),
+			Model: openai.F(openai.ChatModelGPT3_5Turbo),
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+	return chatCompletion.Choices[0].Message.Content, nil
 }
 
 // ---[ Main ]------------------------------------------------------------
