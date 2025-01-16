@@ -29,6 +29,7 @@ const (
 type formType struct {
 	name      string
 	questions []string
+	prompt    string
 }
 
 var formTypes = []formType{
@@ -41,15 +42,16 @@ var formTypes = []formType{
 			"Did it work? If not, what was the result?",
 			"What did you learn?",
 		},
+		prompt: "Using the following text, craft an informative and detailed work note for an incident report.",
 	},
 	{
 		name: "Pull Request/Commit Message",
 		questions: []string{
 			"What did you do?",
 			"Why did you do it?",
-			"How did you do it?",
 			"What did you learn?",
 		},
+		prompt: "Using the following text, craft an informative and detailed comment for a commit message or pull request.",
 	},
 	{
 		name: "Service Request",
@@ -59,6 +61,7 @@ var formTypes = []formType{
 			"How do you want it?",
 			"What will you do with it?",
 		},
+		prompt: "Using the following text, craft an informative and detailed message for a service request that is being made of a colleague.",
 	},
 }
 
@@ -363,8 +366,12 @@ func renderMarkdownToViewport(md string, vp *viewport.Model) error {
 
 // makeChatGPTRequest encapsulates the ChatGPT call & viewport re-rendering.
 func makeChatGPTRequest(ctx context.Context, m *model, md string) error {
+
+	// Append the prompt to the generated response
+	combinedPrompt := m.currentForm.prompt + "\n\n" + md
+
 	// Step 1 - Call ChatGPT with the generated response Markdown
-	resp, err := processFormWithChatGPT(ctx, md)
+	resp, err := processFormWithChatGPT(ctx, combinedPrompt)
 	if err != nil {
 		return fmt.Errorf("OpenAI request error: %v", err)
 	}
