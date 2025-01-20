@@ -34,7 +34,7 @@ type formType struct {
 
 var formTypes = []formType{
 	{
-		name: "Incident Report",
+		name: "Incident Response",
 		questions: []string{
 			"What happened?",
 			"What did you do?",
@@ -42,7 +42,7 @@ var formTypes = []formType{
 			"Did it work? If not, what was the result?",
 			"What did you learn?",
 		},
-		prompt: "Using the following text, craft an informative and detailed work note for an incident report.",
+		prompt: "Using the following text, craft an informative and detailed work note for an incident response.",
 	},
 	{
 		name: "Pull Request/Commit Message",
@@ -51,7 +51,7 @@ var formTypes = []formType{
 			"Why did you do it?",
 			"What did you learn?",
 		},
-		prompt: "Using the following text, craft an informative and detailed comment for a commit message or pull request.",
+		prompt: "Using the following text, craft an informative and detailed title and description for a commit message or pull request.",
 	},
 	{
 		name: "Service Request",
@@ -219,8 +219,12 @@ func (m model) updateQuestionMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		default:
+			// Runes capture standard alphanumeric input, but not the space key.
 			if msg.Type == tea.KeyRunes {
 				m.inputString += msg.String()
+			} else if msg.Type == tea.KeySpace {
+				// Add explicit space handling
+				m.inputString += " "
 			}
 		}
 	}
