@@ -42,7 +42,7 @@ var formTypes = []formType{
 			"Did it work? If not, what was the result?",
 			"What did you learn?",
 		},
-		prompt: "Using the following text, craft an informative and detailed work note for an incident response.",
+		prompt: "Using the following text, craft an informative and detailed work note for an incident response. The output of your response should be a between 2 sentences and several paragraphs, depending on the amount of context offered. It does not need to restate the rubric questions.",
 	},
 	{
 		name: "Pull Request/Commit Message",
@@ -51,7 +51,7 @@ var formTypes = []formType{
 			"Why did you do it?",
 			"What did you learn?",
 		},
-		prompt: "Using the following text, craft an informative and detailed title and description for a commit message or pull request.",
+		prompt: "Using the following text, craft an informative and detailed title and description for a commit message or pull request. The output of your response should be a between 2 sentences and several paragraphs, depending on the amount of context offered. It does not need to restate the rubric questions.",
 	},
 	{
 		name: "Service Request",
@@ -61,7 +61,18 @@ var formTypes = []formType{
 			"How do you want it?",
 			"What will you do with it?",
 		},
-		prompt: "Using the following text, craft an informative and detailed message for a service request that is being made of a colleague.",
+		prompt: "Using the following text, craft an informative and detailed message for a service request that is being made of a colleague. The output of your response should be a between 2 sentences and several paragraphs, depending on the amount of context offered. It does not need to restate the rubric questions.",
+	},
+	{
+		name: "Development ticket",
+		questions: []string{
+			"Is this a feature, bug, or chore?",
+			"What is the current behavior?",
+			"How do you want to change, modify, or add behavior?",
+			"Why do you want this change? What are the benefits?",
+			"What are the acceptance criteria for this change?",
+		},
+		prompt: "Your task is to use the following text to create a detailed and informative ticket for a development task. The output of your response should be a between 2 sentences and several paragraphs, depending on the amount of context offered. It does not need to restate the rubric questions.",
 	},
 }
 
@@ -110,6 +121,8 @@ type model struct {
 	viewport viewport.Model
 	// We store the rendered markdown content so we can re-display or update if needed.
 	content string
+
+	gPressed bool // Used only to detect "gg" in display mode
 }
 
 // initialModel sets up the choicebox, selection data, and an uninitialized viewport.
@@ -149,11 +162,7 @@ func (m model) updateSelectionMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 
 		case "ctrl+c", "q":
-			// If we're in display mode, pressing q just quits.
-			// If we're in selection mode and we haven't pressed "enter" yet,
-			// let's also quit. You could handle these differently if you wish.
 			return m, tea.Quit
-
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
@@ -240,14 +249,34 @@ func (m model) updateDisplayMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Quit
 			return m, tea.Quit
 
+		case "G":
+			// Capital G => scroll to bottom
+			m.viewport.GotoBottom()
+			// Reset state for "g"
+			m.gPressed = false
+			return m, nil
+
+		case "g":
+			if m.gPressed {
+				// Second "g" in a row => scroll to top
+				m.viewport.GotoTop()
+				// Reset the flag
+				m.gPressed = false
+			} else {
+				// First "g"; set the flag
+				m.gPressed = true
+			}
+			return m, nil
+
 		default:
-			// Pass all other keys to the viewport for scrolling
+			// Any other key => reset gPressed, pass key to viewport
+			m.gPressed = false
+
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd
 		}
 	}
-
 	return m, nil
 }
 
@@ -339,7 +368,8 @@ func buildSelectedMarkdown(m model) string {
 
 // renderMarkdownToViewport uses Glamour to transform the raw markdown into styled text.
 func renderMarkdownToViewport(md string, vp *viewport.Model) error {
-	width := 90 // Arbitrary width; adjust as needed
+	width := 100 // Arbitrary width; adjust as needed
+	height := 20 // Arbitrary height; adjust as needed
 	// Prepare a Glamour renderer
 	r, err := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
@@ -357,7 +387,7 @@ func renderMarkdownToViewport(md string, vp *viewport.Model) error {
 	// Setup the viewport with the rendered content
 	vp.SetContent(rendered)
 	vp.Width = width
-	vp.Height = 20
+	vp.Height = height
 	vp.Style = lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("62")).
@@ -381,7 +411,7 @@ func makeChatGPTRequest(ctx context.Context, m *model, md string) error {
 	}
 
 	// Step 2 - Append ChatGPT’s response as an optional "analysis" or "summary"
-	summary := "\n## ChatGPT Analysis\n\n" + resp
+	summary := "\n## Ticket Summary\n\n" + resp
 	appendedContent := md + summary
 
 	// Step 3 - Re-render the viewport with the appended content
