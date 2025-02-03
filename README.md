@@ -1,10 +1,13 @@
-### TicketSummaryTool
-A lightweight tool that helps you make your messy stream-of-consciousness more coherent.
-The hope being that you'll thank yourself later.
+### TicketDuck
+Not *that* kind of Rubber Ducky! TicketDuck is a lightweight tool that helps you make your messy stream-of-consciousness more coherent.
+Will it literally debug your life? Absolutely not. Will it make documenting your troubleshooting and development thought process easier? Hopefully yes!
+Perhaps you'll thank yourself later.
+
 There's no one right way to use this tool, but here's a suggestion:
 1. Incident Reports: What happened? What did you do? Why did you do it? Did it work? What did you learn?
 2. Commit Messages: What did you do? Why did you do it? What did you learn?
 3. Service Requests: What do you want? Why do you want it? What will you do with it?
+4. Development Ticket: Is this a feature, bug or chore? What is the current behavior? How do you want to change, modify, or add behavior? Why do you want this change? What are the benefits? What are the acceptance criteria for this change? 
 
 Built using Charmbracelet's tools:
 
