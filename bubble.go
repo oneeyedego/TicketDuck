@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/acarl005/stripansi"
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
@@ -119,7 +121,9 @@ type model struct {
 
 	// For display mode:
 	viewport viewport.Model
-	// We store the rendered markdown content so we can re-display or update if needed.
+	// Store the raw output from ChatGPT so we can re-render if needed.
+	gptRawOutput string
+	// Store the rendered markdown content so we can re-display or update if needed.
 	content string
 
 	gPressed bool // Used only to detect "gg" in display mode
@@ -265,6 +269,17 @@ func (m model) updateDisplayMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "ctrl+y":
+			// Viewport's .View() includes ANSI color codes,
+			// so we strip them:
+			plainText := stripansi.Strip(m.gptRawOutput)
+
+			// Then copy the plain text to clipboard
+			if err := clipboard.WriteAll(plainText); err != nil {
+				log.Printf("Failed to copy to clipboard: %v\n", err)
+			}
+			return m, nil
+
 		default:
 			// Any other key => reset gPressed, pass key to viewport
 			m.gPressed = false
@@ -342,7 +357,7 @@ func (m model) viewQuestionMode() string {
 // View rendering for Display Mode
 func (m model) viewDisplayMode() string {
 	s := titleStyle.Render("Generated Report") + "\n\n"
-	s += m.viewport.View() + helpStyle.Render("\n  ↑/↓: Scroll • q: Quit\n")
+	s += m.viewport.View() + helpStyle.Render("\n  ↑/↓: Scroll • q: Quit • ctrl+y to copy to clipboard\n")
 	return s
 }
 
@@ -426,6 +441,8 @@ func makeChatGPTRequest(ctx context.Context, m *model, md string) error {
 	if err != nil {
 		return fmt.Errorf("OpenAI request error: %v", err)
 	}
+
+	m.gptRawOutput = resp // Store the raw output
 
 	// Step 2 - Append ChatGPT’s response as an optional "analysis" or "summary"
 	summary := "\n## Ticket Summary\n\n" + resp
