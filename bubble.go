@@ -207,20 +207,17 @@ func (m model) updateQuestionMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.currentQuestion < len(m.currentForm.questions)-1 {
 				m.currentQuestion++
 			} else {
-				// We're done with the form, so it's time to generate the Markdown and switch modes
-				md := buildSelectedMarkdown(m)
-				if err := renderMarkdownToViewport(md, &m.viewport); err != nil {
-					// If there's an error rendering the Markdown, just print it out
-					log.Fatal(err)
-				}
-				m.content = md
+				m = handleFormCompletion(m)
+			}
+		case tea.KeyCtrlS: // ← Skip question on Ctrl+S
+			// Don’t store anything (or store empty string).
+			m.answers[m.currentQuestion] = ""
+			m.inputString = ""
 
-				ctx := context.TODO() // or a context with timeout
-				if err := makeChatGPTRequest(ctx, &m, md); err != nil {
-					log.Printf("Error from ChatGPT: %v\n", err)
-				}
-
-				m.currentMode = displayMode
+			if m.currentQuestion < len(m.currentForm.questions)-1 {
+				m.currentQuestion++
+			} else {
+				m = handleFormCompletion(m)
 			}
 		case tea.KeyBackspace, tea.KeyDelete:
 			if len(m.inputString) > 0 {
@@ -394,6 +391,26 @@ func renderMarkdownToViewport(md string, vp *viewport.Model) error {
 		PaddingRight(2)
 
 	return nil
+}
+
+// handleFormCompletion combines the other helper functions to pass the input on to ChatGPT.
+func handleFormCompletion(m model) model {
+	// Build the Markdown
+	md := buildSelectedMarkdown(m)
+
+	if err := renderMarkdownToViewport(md, &m.viewport); err != nil {
+		log.Fatal(err)
+	}
+	m.content = md
+
+	// Make the ChatGPT request
+	ctx := context.TODO() // or a context with a timeout
+	if err := makeChatGPTRequest(ctx, &m, md); err != nil {
+		log.Printf("Error from ChatGPT: %v\n", err)
+	}
+
+	m.currentMode = displayMode
+	return m
 }
 
 // ---[[ OpenAI API ]]------------------------------------------------------------
