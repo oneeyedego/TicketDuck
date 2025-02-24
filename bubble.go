@@ -17,7 +17,7 @@ import (
 	"github.com/openai/openai-go/option"
 )
 
-// 1) We define two modes: selecting items or viewing the Glamour-rendered markdown.
+// 1) We define three modes: selecting items, answering prompts or viewing the Glamour-rendered markdown.
 type mode int
 
 const (
@@ -147,16 +147,58 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch m.currentMode {
-	case selectionMode:
-		return m.updateSelectionMode(msg)
-	case questionMode:
-		return m.updateQuestionMode(msg)
-	case displayMode:
-		return m.updateDisplayMode(msg)
-	default:
+	switch msg := msg.(type) {
+	// Handle terminal resize events
+	case tea.WindowSizeMsg:
+		// Use the new dimensions provided by msg
+		termWidth := msg.Width
+		termHeight := msg.Height
+
+		// Define margins or offsets as used previously
+		marginWidth := 4  // e.g., borders, padding
+		marginHeight := 8 // e.g., header/footer
+
+		// Calculate new dimensions for the viewport
+		width := termWidth - marginWidth
+		height := termHeight - marginHeight
+		if width < 40 {
+			width = 40
+		}
+		if height < 10 {
+			height = 10
+		}
+
+		// Update the viewport dimensions
+		m.viewport.Width = width
+		m.viewport.Height = height
+		m.viewport.Style = lipgloss.NewStyle().
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("62")).
+			PaddingLeft(2).
+			PaddingRight(2)
+
+		// If in display mode, re-render the markdown to adjust wrapping
+		if m.currentMode == displayMode {
+			// m.content is the raw markdown content that was last rendered.
+			if err := renderMarkdownToViewport(m.content, &m.viewport); err != nil {
+				log.Printf("Error re-rendering markdown on resize: %v\n", err)
+			}
+		}
+		// Return without further commands, as resizing is now handled.
 		return m, nil
+
+	// Handle other message types based on current mode
+	case tea.KeyMsg:
+		switch m.currentMode {
+		case selectionMode:
+			return m.updateSelectionMode(msg)
+		case questionMode:
+			return m.updateQuestionMode(msg)
+		case displayMode:
+			return m.updateDisplayMode(msg)
+		}
 	}
+	return m, nil
 }
 
 func (m model) updateSelectionMode(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -242,51 +284,84 @@ func (m model) updateQuestionMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// countLines returns the number of lines in the given string.
+func countLines(s string) int {
+	return len(strings.Split(s, "\n"))
+}
+
 func (m model) updateDisplayMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
-			// Quit
 			return m, tea.Quit
 
+		// Scroll up one line
+		case "up", "k":
+			if m.viewport.YOffset > 0 {
+				m.viewport.YOffset--
+			}
+			return m, nil
+
+		// Scroll down one line
+		case "down", "j":
+			// Calculate total number of lines from the viewport's current content.
+			totalLines := countLines(m.content)
+			maxYOffset := totalLines - m.viewport.Height
+			if m.viewport.YOffset < maxYOffset {
+				m.viewport.YOffset++
+			}
+			return m, nil
+
+		// Page up: scroll up by the height of the viewport.
+		case "pgup":
+			m.viewport.YOffset -= m.viewport.Height
+			if m.viewport.YOffset < 0 {
+				m.viewport.YOffset = 0
+			}
+			return m, nil
+
+		// Page down: scroll down by the height of the viewport.
+		case "pgdown":
+			totalLines := countLines(m.content)
+			maxYOffset := totalLines - m.viewport.Height
+			m.viewport.YOffset += m.viewport.Height
+			if m.viewport.YOffset > maxYOffset {
+				m.viewport.YOffset = maxYOffset
+			}
+			return m, nil
+
+		// Jump to bottom
 		case "G":
-			// Capital G => scroll to bottom
-			m.viewport.GotoBottom()
-			// Reset state for "g"
+			totalLines := countLines(m.content)
+			m.viewport.YOffset = totalLines - m.viewport.Height
+			if m.viewport.YOffset < 0 {
+				m.viewport.YOffset = 0
+			}
 			m.gPressed = false
 			return m, nil
 
+		// Jump to top (with "g" pressed twice)
 		case "g":
 			if m.gPressed {
-				// Second "g" in a row => scroll to top
-				m.viewport.GotoTop()
-				// Reset the flag
+				m.viewport.YOffset = 0
 				m.gPressed = false
 			} else {
-				// First "g"; set the flag
 				m.gPressed = true
 			}
 			return m, nil
 
+		// Copy plain text to clipboard
 		case "ctrl+y":
-			// Viewport's .View() includes ANSI color codes,
-			// so we strip them:
 			plainText := stripansi.Strip(m.gptRawOutput)
-
-			// Then copy the plain text to clipboard
 			if err := clipboard.WriteAll(plainText); err != nil {
 				log.Printf("Failed to copy to clipboard: %v\n", err)
 			}
 			return m, nil
 
 		default:
-			// Any other key => reset gPressed, pass key to viewport
-			m.gPressed = false
-
-			var cmd tea.Cmd
-			m.viewport, cmd = m.viewport.Update(msg)
-			return m, cmd
+			// For any other keys, ignore or implement additional behavior.
+			return m, nil
 		}
 	}
 	return m, nil
@@ -349,6 +424,7 @@ func (m model) viewQuestionMode() string {
 	s += inputLine
 
 	s += "\n\nPress Enter to submit your answer.\n"
+	s += "Press Ctrl+s to skip this question.\n"
 	s += "Press Esc or q to quit.\n"
 
 	return s
@@ -356,8 +432,8 @@ func (m model) viewQuestionMode() string {
 
 // View rendering for Display Mode
 func (m model) viewDisplayMode() string {
-	s := titleStyle.Render("Generated Report") + "\n\n"
-	s += m.viewport.View() + helpStyle.Render("\n  ↑/↓: Scroll • q: Quit • ctrl+y to copy to clipboard\n")
+	s := titleStyle.Render("Generated Output") + "\n\n"
+	s += m.viewport.View() + helpStyle.Render("\n  ↑/↓: Scroll • q: Quit • Ctrl+y to copy to clipboard\n")
 	return s
 }
 
@@ -380,13 +456,13 @@ func buildSelectedMarkdown(m model) string {
 
 // renderMarkdownToViewport uses Glamour to transform the raw markdown into styled text.
 func renderMarkdownToViewport(md string, vp *viewport.Model) error {
-	width := 100 // Arbitrary width; adjust as needed
-	height := 20 // Arbitrary height; adjust as needed
-	// Prepare a Glamour renderer
+
+	// Prepare a Glamour renderer using the dynamic width for proper word wrapping
 	r, err := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
-		glamour.WithWordWrap(width),
+		glamour.WithWordWrap(len(md)),
 	)
+
 	if err != nil {
 		return err
 	}
@@ -396,15 +472,11 @@ func renderMarkdownToViewport(md string, vp *viewport.Model) error {
 		return err
 	}
 
-	// Setup the viewport with the rendered content
-	vp.SetContent(rendered)
-	vp.Width = width
-	vp.Height = height
-	vp.Style = lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
-		PaddingRight(2)
+	// Ensure the rendered content ends with a newline for proper display
+	rendered = strings.TrimRight(rendered, "\n") + "\n"
 
+	// Now set the content so that the viewport correctly computes the scrollable region
+	vp.SetContent(rendered)
 	return nil
 }
 
