@@ -29,6 +29,15 @@ import (
 	"github.com/openai/openai-go/option"
 )
 
+// ---[ DEBUG: Logging ]-------------------------------------------------------
+//
+// This section defines the logging functionality for the application.
+//
+// The logging is used to record the state and behavior of the application.
+// It is stored in a file in the user's home directory.
+//
+// I'm using this to debug the application, but I might delete it before finalizing the project.
+
 // Initialize the logger
 var (
 	// Placeholder for our file logger
@@ -77,7 +86,15 @@ func logf(format string, v ...interface{}) {
 	}
 }
 
-// 1) We define three modes: selecting items, answering prompts or viewing the Glamour-rendered markdown.
+// ---[ Configuration ]-------------------------------------------------------
+//
+// This section defines the configuration for the application.
+//
+// The configuration is used to manage the state and behavior of the application.
+// It defines the modes and providers for the application, as well as the API keys and base URLs for the LLM providers, if applicable.
+// Its state is stored in raw JSON in a config file in the user's home directory.
+//
+
 type mode int
 
 const (
@@ -88,7 +105,6 @@ const (
 	modelSelectMode
 )
 
-// ---[ Configuration ]-------------------------------------------------------
 // ModelProvider represents the different AI providers supported by the application
 type ModelProvider string
 
@@ -112,48 +128,23 @@ type Config struct {
 	Models      map[string]ModelConfig `json:"models"`
 }
 
-// This provides presets for common models, but you could certainly add more
-// The local models (e.g., Mistral, Llama) should probably be modified to suit your hosting situation
+// This provides presets for common providers of pre-trained models, but you could certainly add more
+// The local models (e.g., Mistral, Llama) should probably be modified to suit your hosting situation,
+// which you'll be able to configure at runtime.
+
 var DefaultModelConfigs = map[string]ModelConfig{
-	"openai-gpt3.5": {
+	"openai": {
 		Provider:  ProviderOpenAI,
-		ModelName: "gpt-3.5-turbo",
+		ModelName: "gpt-3.5-turbo", // Default model, can be changed
 	},
-	"openai-gpt4": {
-		Provider:  ProviderOpenAI,
-		ModelName: "gpt-4",
-	},
-	"claude-haiku": {
+	"anthropic": {
 		Provider:  ProviderAnthropic,
-		ModelName: "claude-3-haiku-20240307",
+		ModelName: "claude-3-sonnet-20240229", // Default model, can be changed
 	},
-	"claude-sonnet": {
-		Provider:  ProviderAnthropic,
-		ModelName: "claude-3-sonnet-20240229",
-	},
-	"claude-opus": {
-		Provider:  ProviderAnthropic,
-		ModelName: "claude-3-opus-20240229",
-	},
-	"local-ollama-llama3": {
+	"ollama": {
 		Provider:   ProviderLocal,
-		ModelName:  "llama3",
+		ModelName:  "llama3", // Default model, can be changed
 		APIBaseURL: "http://localhost:11434",
-	},
-	"local-ollama-llama3.2": {
-		Provider:   ProviderLocal,
-		ModelName:  "llama3.2",
-		APIBaseURL: "http://localhost:11434",
-	},
-	"local-ollama-mixtral": {
-		Provider:   ProviderLocal,
-		ModelName:  "mixtral",
-		APIBaseURL: "http://localhost:11434",
-	},
-	"local-custom": {
-		Provider:   ProviderLocal,
-		ModelName:  "",
-		APIBaseURL: "",
 	},
 }
 
@@ -312,6 +303,13 @@ var (
 )
 
 // ---[ Model ]----------------------------------------------------------------
+//
+// This section defines the Model interface (Model as in Model-View-Controller/MVC, not Model as in machine learning model)
+// and its implementation for the bubbletea framework.
+//
+// The Model interface is used to manage the state and behavior of the application.
+// It defines the Update method, which is called when a message is received from the terminal.
+//
 
 type model struct {
 	currentMode mode
@@ -424,8 +422,6 @@ func indexOf(slice []string, item string) int {
 	return 0
 }
 
-// ---[ [Bubbletea interface] ]-------------------------------------------------
-
 func (m model) Init() tea.Cmd {
 	return nil
 }
@@ -515,9 +511,14 @@ func (m model) updateAPIKeyInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			baseURL := strings.TrimSpace(m.apiBaseInput.Value())
 			modelName := strings.TrimSpace(m.modelNameInput.Value())
 
-			// If model name is empty, keep the existing model name
+			// If base URL is empty, keep default
+			if baseURL == "" {
+				baseURL = "http://localhost:11434"
+			}
+
+			// If model name is empty, use a default
 			if modelName == "" {
-				modelName = modelConfig.ModelName
+				modelName = "llama3"
 			}
 
 			m.config.Models[m.selectedModel] = ModelConfig{
@@ -526,13 +527,24 @@ func (m model) updateAPIKeyInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				APIBaseURL: baseURL,
 			}
 		} else {
-			// For cloud models, we need to save the API key
+			// For cloud models, we need to save the API key and model name
 			apiKey := strings.TrimSpace(m.apiKeyInput.Value())
-			log.Printf("Saved API key length: %d characters", len(apiKey))
+			modelName := strings.TrimSpace(m.modelNameInput.Value())
+
+			// If model name is empty, use the default from the provider
+			if modelName == "" {
+				if modelConfig.Provider == ProviderOpenAI {
+					modelName = "gpt-3.5-turbo"
+				} else if modelConfig.Provider == ProviderAnthropic {
+					modelName = "claude-3-sonnet-20240229"
+				}
+			}
+
+			logf("Saved API key length: %d characters, model name: %s", len(apiKey), modelName)
 
 			m.config.Models[m.selectedModel] = ModelConfig{
 				Provider:  modelConfig.Provider,
-				ModelName: modelConfig.ModelName,
+				ModelName: modelName,
 				APIKey:    apiKey,
 			}
 		}
@@ -548,69 +560,34 @@ func (m model) updateAPIKeyInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.currentMode = selectionMode
 		return m, nil
 
-	case tea.KeyTab:
-		// Cycle between input fields and save checkbox
-		if isLocalModel {
-			// For local models, cycle through base URL, model name, and save checkbox
-			m.focusedInput = (m.focusedInput + 1) % 3
-
-			// Update focus on input fields
-			m.apiBaseInput.Blur()
-			m.modelNameInput.Blur()
-
-			if m.focusedInput == 0 {
-				m.apiBaseInput.Focus()
-			} else if m.focusedInput == 1 {
-				m.modelNameInput.Focus()
-			}
-		} else {
-			// For cloud models, just toggle between API key and save checkbox
-			m.focusedInput = (m.focusedInput + 1) % 2
-
-			if m.focusedInput == 0 {
-				m.apiKeyInput.Focus()
-			} else {
-				m.apiKeyInput.Blur()
-			}
-		}
-		return m, nil
-
-	case tea.KeyShiftTab:
-		// Cycle backwards between input fields and save checkbox
-		if isLocalModel {
-			// For local models, cycle through base URL, model name, and save checkbox
-			m.focusedInput = (m.focusedInput - 1)
-			if m.focusedInput < 0 {
-				m.focusedInput = 2
-			}
-
-			// Update focus on input fields
-			m.apiBaseInput.Blur()
-			m.modelNameInput.Blur()
-
-			if m.focusedInput == 0 {
-				m.apiBaseInput.Focus()
-			} else if m.focusedInput == 1 {
-				m.modelNameInput.Focus()
-			}
-		} else {
-			// For cloud models, just toggle between API key and save checkbox
-			m.focusedInput = (m.focusedInput - 1)
-			if m.focusedInput < 0 {
-				m.focusedInput = 1
-			}
-
-			if m.focusedInput == 0 {
-				m.apiKeyInput.Focus()
-			} else {
-				m.apiKeyInput.Blur()
-			}
-		}
-		return m, nil
-
 	case tea.KeyUp, tea.KeyDown:
+		// Cycle between input fields and save checkbox
+		// For all providers, cycle through input fields and save checkbox (3 fields total)
+		m.focusedInput = (m.focusedInput + 1) % 3
+
+		// Update focus on input fields
+		m.apiKeyInput.Blur()
+		m.apiBaseInput.Blur()
+		m.modelNameInput.Blur()
+
+		if isLocalModel {
+			if m.focusedInput == 0 {
+				m.apiBaseInput.Focus()
+			} else if m.focusedInput == 1 {
+				m.modelNameInput.Focus()
+			}
+		} else {
+			if m.focusedInput == 0 {
+				m.apiKeyInput.Focus()
+			} else if m.focusedInput == 1 {
+				m.modelNameInput.Focus()
+			}
+		}
+		return m, nil
+
+	case tea.KeySpace:
 		// Toggle save config option when focused on it
-		if (isLocalModel && m.focusedInput == 2) || (!isLocalModel && m.focusedInput == 1) {
+		if m.focusedInput == 2 {
 			m.saveConfig = !m.saveConfig
 		}
 		return m, nil
@@ -626,6 +603,8 @@ func (m model) updateAPIKeyInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	} else {
 		if m.focusedInput == 0 {
 			m.apiKeyInput, cmd = m.apiKeyInput.Update(msg)
+		} else if m.focusedInput == 1 {
+			m.modelNameInput, cmd = m.modelNameInput.Update(msg)
 		}
 	}
 
@@ -875,7 +854,7 @@ func (m model) viewAPIKeyInputMode() string {
 	var title string
 
 	if isLocalModel {
-		title = fmt.Sprintf("Configure Local Model: %s", m.selectedModel)
+		title = fmt.Sprintf("Configure Ollama: %s", m.selectedModel)
 
 		// Initialize input field values if they're empty
 		if m.apiBaseInput.Placeholder == "" {
@@ -898,8 +877,15 @@ func (m model) viewAPIKeyInputMode() string {
 		providerName := string(modelConfig.Provider)
 		providerName = strings.ToUpper(providerName[:1]) + providerName[1:]
 
-		title = fmt.Sprintf("Configure %s API: %s", providerName, m.selectedModel)
+		title = fmt.Sprintf("Configure %s API", providerName)
 
+		// Set model name input placeholder and value
+		m.modelNameInput.Placeholder = fmt.Sprintf("Model name for %s (e.g., %s)", providerName, modelConfig.ModelName)
+		if modelConfig.ModelName != "" && m.modelNameInput.Value() == "" {
+			m.modelNameInput.SetValue(modelConfig.ModelName)
+		}
+
+		// Set API key placeholder based on provider
 		switch modelConfig.Provider {
 		case ProviderOpenAI:
 			m.apiKeyInput.Placeholder = "Enter your OpenAI API key..."
@@ -944,15 +930,31 @@ func (m model) viewAPIKeyInputMode() string {
 		// Add model name hint for Ollama users
 		s += helpStyle.Render("For Ollama: Use exactly the model name shown in 'ollama list'") + "\n\n"
 	} else {
-		// For cloud models, just show the API key input
+		// For cloud models, show both API key and model name inputs
 		apiKeyFocused := m.focusedInput == 0
+		modelNameFocused := m.focusedInput == 1
 
+		// API Key field
 		if apiKeyFocused {
 			s += selectedStyle.Render("API Key:") + "\n"
 		} else {
 			s += "API Key:" + "\n"
 		}
 		s += m.apiKeyInput.View() + "\n\n"
+
+		// Model Name field
+		if modelNameFocused {
+			s += selectedStyle.Render("Model Name:") + "\n"
+		} else {
+			s += "Model Name:" + "\n"
+		}
+		s += m.modelNameInput.View() + "\n"
+
+		if modelConfig.Provider == ProviderAnthropic {
+			s += helpStyle.Render("For Claude: Examples include claude-3-opus-20240229, claude-3-sonnet-20240229, claude-3-haiku-20240307") + "\n\n"
+		} else if modelConfig.Provider == ProviderOpenAI {
+			s += helpStyle.Render("For OpenAI: Examples include gpt-3.5-turbo, gpt-4, gpt-4-turbo") + "\n\n"
+		}
 	}
 
 	// Save configuration checkbox
@@ -961,7 +963,7 @@ func (m model) viewAPIKeyInputMode() string {
 		saveText = "[x] Save configuration to config file"
 	}
 
-	saveFocused := (isLocalModel && m.focusedInput == 2) || (!isLocalModel && m.focusedInput == 1)
+	saveFocused := m.focusedInput == 2
 	if saveFocused {
 		s += selectedStyle.Render(saveText) + "\n\n"
 	} else {
@@ -969,11 +971,7 @@ func (m model) viewAPIKeyInputMode() string {
 	}
 
 	// Help text
-	if isLocalModel {
-		s += helpStyle.Render("Tab/Shift+Tab: Navigate fields • Up/Down: Toggle checkbox when focused • Enter: Confirm")
-	} else {
-		s += helpStyle.Render("Tab/Shift+Tab: Navigate fields • Up/Down: Toggle checkbox when focused • Enter: Confirm")
-	}
+	s += helpStyle.Render("↑/↓: Cycle through fields • Space: Toggle checkbox • Enter: Confirm")
 
 	return s
 }
@@ -1017,7 +1015,7 @@ func (m model) viewQuestionMode() string {
 
 	s += "\n\nPress Enter to submit your answer.\n"
 	s += "Press Ctrl+s to skip this question.\n"
-	s += "Press Esc or q to quit.\n"
+	s += "Press Esc to quit.\n"
 
 	return s
 }
@@ -1031,7 +1029,7 @@ func (m model) viewDisplayMode() string {
 
 // viewModelSelectMode renders the model selection interface
 func (m model) viewModelSelectMode() string {
-	s := titleStyle.Render("Select AI Model") + "\n\n"
+	s := titleStyle.Render("Select AI Provider") + "\n\n"
 
 	for i, key := range m.modelKeys {
 		modelConfig := m.config.Models[key]
@@ -1041,10 +1039,35 @@ func (m model) viewModelSelectMode() string {
 			cursor = cursorStyle.Render(">")
 		}
 
-		// Format model name with provider info
-		modelInfo := fmt.Sprintf("%s (%s)", key, modelConfig.Provider)
+		// Get a user-friendly provider name
+		var providerDisplay string
+		switch modelConfig.Provider {
+		case ProviderOpenAI:
+			providerDisplay = "OpenAI"
+		case ProviderAnthropic:
+			providerDisplay = "Anthropic (Claude)"
+		case ProviderLocal:
+			providerDisplay = "Ollama (Local)"
+		default:
+			providerDisplay = string(modelConfig.Provider)
+		}
 
-		// Show API status
+		// Format model info to show current model name or configuration status
+		var modelInfo string
+		if key == "openai" || key == "anthropic" || key == "ollama" {
+			// For the main providers, show model name if configured
+			if (modelConfig.Provider != ProviderLocal && modelConfig.APIKey != "") ||
+				(modelConfig.Provider == ProviderLocal && modelConfig.APIBaseURL != "") {
+				modelInfo = fmt.Sprintf("%s - %s", providerDisplay, modelConfig.ModelName)
+			} else {
+				modelInfo = fmt.Sprintf("%s (not configured)", providerDisplay)
+			}
+		} else {
+			// For custom configurations, show provider and model name
+			modelInfo = fmt.Sprintf("%s (%s)", key, providerDisplay)
+		}
+
+		// Show configuration status
 		status := ""
 		if modelConfig.Provider != ProviderLocal && modelConfig.APIKey != "" {
 			status = " ✓"
@@ -1064,13 +1087,19 @@ func (m model) viewModelSelectMode() string {
 	}
 
 	s += "\nUse ↑/↓ or k/j to navigate. Press Enter or Space to select.\n"
-	s += fmt.Sprintf("Current model: %s\n", m.config.ActiveModel)
+	s += "Press c to configure the selected provider and model name.\n"
+	if m.config.ActiveModel != "" {
+		s += fmt.Sprintf("Current model: %s - %s\n", m.config.ActiveModel, m.config.Models[m.config.ActiveModel].ModelName)
+	}
 	s += "Press q to quit.\n"
 
 	return s
 }
 
-// --- [ Helper functions ] ------------------------------------
+// --- [ I/O ] ------------------------------------
+//
+// This section defines helper functions to take the user input in the viewport and pass it to the LLM.
+//
 
 // buildSelectedMarkdown returns a string of Markdown reflecting the selected items.
 func buildSelectedMarkdown(m model) string {
@@ -1113,7 +1142,7 @@ func renderMarkdownToViewport(md string, vp *viewport.Model) error {
 	return nil
 }
 
-// handleFormCompletion combines the other helper functions to pass the input on to ChatGPT.
+// handleFormCompletion combines the other helper functions to pass the input on to the LLM.
 func handleFormCompletion(m model) model {
 	// Build the Markdown
 	md := buildSelectedMarkdown(m)
@@ -1242,7 +1271,7 @@ func processFormWithLLM(ctx context.Context, modelConfig ModelConfig, content st
 	return response, nil
 }
 
-// ---[[ LLM Interface ]]------------------------------------------------------------
+// ---[[ LLM Client Interface ]]------------------------------------------------------------
 
 // LLMClient defines the interface for different LLM providers
 type LLMClient interface {
