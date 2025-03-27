@@ -24,10 +24,10 @@ Built using Charmbracelet's tools:
 
 Other non-standard dependencies:
 
-- "github.com/liushuangls/go-anthropic" (Community Claude API wrapper for Go) 
-- "github.com/openai/openai-go" (OpenAI API for Go)
-- "github.com/acarl005/stripansi" (Helps format TUI output)
-- "github.com/atotto/clipboard" (Takes that output and pipes it to the clipboard)
+- https://github.com/liushuangls/go-anthropic (Community Claude API wrapper for Go) 
+- https://github.com/openai/openai-go (OpenAI API for Go)
+- https://github.com/acarl005/stripansi (Helps format TUI output)
+- https://github.com/atotto/clipboard (Takes that output and pipes it to the clipboard)
 
 Supported platforms: GNU/Linux, MacOS, BSD
 
