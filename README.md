@@ -1,3 +1,7 @@
+<p align="center">
+  <img width="250" height="250" src="images/icon.png">
+</p>
+
 ### TicketDuck
 Like a rubber ducky that talks back, TicketDuck is a lightweight tool that helps you make your messy stream-of-consciousness more coherent (your friends and colleagues will thank you). 
 
