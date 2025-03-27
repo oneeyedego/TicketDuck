@@ -1,7 +1,7 @@
 ### TicketDuck
-Not *that* kind of Rubber Ducky! TicketDuck is a lightweight tool that helps you make your messy stream-of-consciousness more coherent.
-Will it literally debug your life? Absolutely not. Will it make documenting your troubleshooting and development thought process easier? Hopefully yes!
-Perhaps you'll thank yourself later.
+Not *that* kind of Rubber Ducky! TicketDuck is a lightweight tool that helps you make your messy stream-of-consciousness more coherent (your friends and colleagues will thank you). 
+
+Will it literally debug your life? Absolutely not. How about make you a better leader and team member? That's complicated. Will it make documenting your troubleshooting and development thought process easier? Hopefully yes!
 
 There's no one right way to use this tool, but here's a suggestion:
 1. Incident Reports: What happened? What did you do? Why did you do it? Did it work? What did you learn?
