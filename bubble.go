@@ -103,6 +103,7 @@ const (
 	displayMode
 	apiKeyInputMode
 	modelSelectMode
+	styleSelectMode
 )
 
 // ModelProvider represents the different AI providers supported by the application
@@ -227,6 +228,40 @@ func loadConfig() (Config, error) {
 
 // ---[ Lip Gloss Styles ]-----------------------------------------------------
 
+// StyleTheme represents a predefined style theme
+type StyleTheme struct {
+	Name  string
+	Base  lipgloss.AdaptiveColor
+	Accent lipgloss.AdaptiveColor
+	Error  lipgloss.AdaptiveColor
+	Success lipgloss.AdaptiveColor
+}
+
+// Available style themes
+var styleThemes = []StyleTheme{
+	{
+		Name: "Default",
+		Base: lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#02BF87"},
+		Accent: lipgloss.AdaptiveColor{Light: "#7D56F4", Dark: "#7D56F4"},
+		Error: lipgloss.AdaptiveColor{Light: "#FF5F87", Dark: "#FF5F87"},
+		Success: lipgloss.AdaptiveColor{Light: "#02BA84", Dark: "#02BF87"},
+	},
+	{
+		Name: "Ocean",
+		Base: lipgloss.AdaptiveColor{Light: "#5A56E0", Dark: "#7571F9"},
+		Accent: lipgloss.AdaptiveColor{Light: "#00B4D8", Dark: "#00B4D8"},
+		Error: lipgloss.AdaptiveColor{Light: "#FF6B6B", Dark: "#FF6B6B"},
+		Success: lipgloss.AdaptiveColor{Light: "#4ECDC4", Dark: "#4ECDC4"},
+	},
+	{
+		Name: "Sunset",
+		Base: lipgloss.AdaptiveColor{Light: "#FF6B6B", Dark: "#FF6B6B"},
+		Accent: lipgloss.AdaptiveColor{Light: "#FFD166", Dark: "#FFD166"},
+		Error: lipgloss.AdaptiveColor{Light: "#EF476F", Dark: "#EF476F"},
+		Success: lipgloss.AdaptiveColor{Light: "#06D6A0", Dark: "#06D6A0"},
+	},
+}
+
 // Styles defines the styling for the application
 type Styles struct {
 	Base,
@@ -238,29 +273,31 @@ type Styles struct {
 	Help lipgloss.Style
 }
 
-// NewStyles creates a new Styles instance
-func NewStyles(lg *lipgloss.Renderer) *Styles {
+// NewStyles creates a new Styles instance with the given theme
+func NewStyles(lg *lipgloss.Renderer, theme StyleTheme) *Styles {
 	s := Styles{}
 	s.Base = lg.NewStyle().
 		Padding(1, 4, 0, 1)
 	s.HeaderText = lg.NewStyle().
-		Foreground(lipgloss.Color("#7D56F4")).
+		Foreground(theme.Base).
 		Bold(true).
 		Padding(0, 1, 0, 2)
 	s.Status = lg.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#7D56F4")).
+		BorderForeground(theme.Base).
 		PaddingLeft(1).
 		MarginTop(1)
 	s.StatusHeader = lg.NewStyle().
-		Foreground(lipgloss.Color("#04B575")).
+		Foreground(theme.Base).
 		Bold(true)
 	s.Highlight = lg.NewStyle().
-		Foreground(lipgloss.Color("#212"))
-	s.ErrorHeaderText = s.HeaderText.
-		Foreground(lipgloss.Color("#FF5F87"))
+		Foreground(theme.Base)
+	s.ErrorHeaderText = lg.NewStyle().
+		Foreground(theme.Error).
+		Bold(true).
+		Padding(0, 1, 0, 2)
 	s.Help = lg.NewStyle().
-		Foreground(lipgloss.Color("241"))
+		Foreground(lipgloss.AdaptiveColor{Light: "241", Dark: "241"})
 	return &s
 }
 
@@ -386,6 +423,10 @@ type model struct {
 	selectedModel string   // Currently selected model key
 
 	width int // Added for appBoundaryView
+
+	// For style selection:
+	styleThemeIndex int
+	styleThemes     []StyleTheme
 }
 
 // initialModel sets up the choicebox, selection data, and an uninitialized viewport.
@@ -449,7 +490,9 @@ func initialModel() model {
 		modelKeys:      modelKeys,
 		selectedModel:  config.ActiveModel,
 		modelCursor:    indexOf(modelKeys, config.ActiveModel),
-		styles:         NewStyles(lipgloss.DefaultRenderer()),
+		styleThemes:     styleThemes,
+		styleThemeIndex: 0,
+		styles:         NewStyles(lipgloss.DefaultRenderer(), styleThemes[0]),
 		width:          80, // Assuming a default width
 	}
 
@@ -492,19 +535,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			height = 10
 		}
 
-		// Update the viewport dimensions
+		// Update the viewport dimensions and style
 		m.viewport.Width = width
 		m.viewport.Height = height
 		m.viewport.Style = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("62")).
+			BorderForeground(m.styleThemes[m.styleThemeIndex].Base).
 			PaddingLeft(2).
 			PaddingRight(2)
 
 		// If in display mode, re-render the markdown to adjust wrapping
 		if m.currentMode == displayMode {
-			// m.content is the raw markdown content that was last rendered.
-			if err := renderMarkdownToViewport(m.content, &m.viewport); err != nil {
+			theme := m.styleThemes[m.styleThemeIndex]
+			if err := renderMarkdownToViewport(m.content, &m.viewport, theme); err != nil {
 				log.Printf("Error re-rendering markdown on resize: %v\n", err)
 			}
 		}
@@ -514,9 +557,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Handle other message types based on current mode
 	case tea.KeyMsg:
 		// Global key handlers that work in any mode
-		if msg.String() == "~" {
+		switch msg.String() {
+		case "q":
+			return m, tea.Quit
+		case "esc":
+			// Return to main menu from any mode except selection mode
+			if m.currentMode != selectionMode {
+				m.currentMode = selectionMode
+				return m, nil
+			}
+		case "~":
 			// Add global shortcut to switch to model selection mode
 			m.currentMode = modelSelectMode
+			return m, nil
+		case "ctrl+t":
+			// Add global shortcut to switch to style selection mode
+			m.currentMode = styleSelectMode
 			return m, nil
 		}
 
@@ -532,6 +588,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateAPIKeyInputMode(msg)
 		case modelSelectMode:
 			return m.updateModelSelectMode(msg)
+		case styleSelectMode:
+			return m.updateStyleSelectMode(msg)
 		}
 	}
 	return m, nil
@@ -864,6 +922,27 @@ func (m model) updateModelSelectMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updateStyleSelectMode handles user input in the style selection mode
+func (m model) updateStyleSelectMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "up", "k":
+		if m.styleThemeIndex > 0 {
+			m.styleThemeIndex--
+		}
+	case "down", "j":
+		if m.styleThemeIndex < len(m.styleThemes)-1 {
+			m.styleThemeIndex++
+		}
+	case "enter":
+		// Apply the selected theme
+		m.styles = NewStyles(lipgloss.DefaultRenderer(), m.styleThemes[m.styleThemeIndex])
+		m.currentMode = selectionMode // Return to selection mode
+	case "esc":
+		m.currentMode = selectionMode // Return to selection mode
+	}
+	return m, nil
+}
+
 // --- [View] ----------------------------------------------------------------
 
 func (m model) View() string {
@@ -883,6 +962,9 @@ func (m model) View() string {
 
 	case modelSelectMode:
 		return m.viewModelSelectMode()
+
+	case styleSelectMode:
+		return m.viewStyleSelectMode()
 
 	default:
 		return "Unknown mode."
@@ -1015,7 +1097,8 @@ func (m model) viewAPIKeyInputMode() string {
 	}
 
 	// Help text
-	s += m.styles.Help.Render("↑/↓: Cycle through fields • Space: Toggle checkbox • Enter: Confirm")
+	s += m.styles.Help.Render("↑/↓: Cycle through fields • Space: Toggle checkbox • Enter: Confirm") + "\n"
+	s += m.styles.Help.Render("Esc to return to menu • q to quit")
 
 	return s
 }
@@ -1041,9 +1124,9 @@ func (m model) viewSelectionMode() string {
 		s += line + "\n"
 	}
 
-	s += "\n" + m.styles.Help.Render("Use ↑/↓ or j/k to navigate. Press Enter or Space to select.") + "\n"
+	s += "\n" + m.styles.Help.Render("Use ↑/↓ or j/k to navigate • Enter to select") + "\n"
 	s += m.styles.Help.Render(fmt.Sprintf("Current model: %s", m.config.ActiveModel)) + "\n"
-	s += m.styles.Help.Render("Press ~ to change model. Press q to quit.") + "\n"
+	s += m.styles.Help.Render("~ to change model • Ctrl+t to change theme • q to quit") + "\n"
 
 	return s
 }
@@ -1057,9 +1140,8 @@ func (m model) viewQuestionMode() string {
 	s += m.styles.Highlight.Render(fmt.Sprintf("**%s**", currentQ)) + "\n\n"
 	s += inputLine
 
-	s += "\n\n" + m.styles.Help.Render("Press Enter to submit your answer.") + "\n"
-	s += m.styles.Help.Render("Press Ctrl+s to skip this question.") + "\n"
-	s += m.styles.Help.Render("Press Esc to quit.") + "\n"
+	s += "\n\n" + m.styles.Help.Render("Enter to submit • Ctrl+s to skip") + "\n"
+	s += m.styles.Help.Render("Esc to return to menu • q to quit") + "\n"
 
 	return s
 }
@@ -1067,7 +1149,8 @@ func (m model) viewQuestionMode() string {
 // View rendering for Display Mode
 func (m model) viewDisplayMode() string {
 	s := m.appBoundaryView("Generated Output") + "\n\n"
-	s += m.viewport.View() + m.styles.Help.Render("\n  ↑/↓: Scroll • q: Quit • Ctrl+y to copy to clipboard\n")
+	s += m.viewport.View()
+	s += m.styles.Help.Render("\n↑/↓: Scroll • Ctrl+y to copy • Esc to return to menu • q to quit\n")
 	return s
 }
 
@@ -1130,35 +1213,61 @@ func (m model) viewModelSelectMode() string {
 		s += line + "\n"
 	}
 
-	s += "\n" + m.styles.Help.Render("Use ↑/↓ or j/k to navigate. Press Enter or Space to select.") + "\n"
-	s += m.styles.Help.Render("Press c to configure the selected provider and model name.") + "\n"
+	s += "\n" + m.styles.Help.Render("Use ↑/↓ or j/k to navigate • Enter to select") + "\n"
+	s += m.styles.Help.Render("c to configure provider • Ctrl+t to change theme") + "\n"
 	if m.config.ActiveModel != "" {
 		s += m.styles.Help.Render(fmt.Sprintf("Current model: %s - %s", m.config.ActiveModel, m.config.Models[m.config.ActiveModel].ModelName)) + "\n"
 	}
-	s += m.styles.Help.Render("Press q to quit.") + "\n"
+	s += m.styles.Help.Render("Esc to return to menu • q to quit") + "\n"
+
+	return s
+}
+
+// viewStyleSelectMode renders the style selection interface
+func (m model) viewStyleSelectMode() string {
+	s := m.appBoundaryView("Select Style Theme") + "\n\n"
+
+	for i, theme := range m.styleThemes {
+		cursor := "  "
+		if m.styleThemeIndex == i {
+			cursor = m.styles.Highlight.Render(">")
+		}
+
+		line := fmt.Sprintf("%s %s", cursor, theme.Name)
+		if m.styleThemeIndex == i {
+			line = m.styles.Highlight.Render(line)
+		}
+
+		s += line + "\n"
+	}
+
+	s += "\n" + m.styles.Help.Render("Use ↑/↓ to navigate • Enter to select") + "\n"
+	s += m.styles.Help.Render("Esc to return to menu • q to quit") + "\n"
 
 	return s
 }
 
 // appBoundaryView renders a consistent header for the application
 func (m model) appBoundaryView(text string) string {
+	theme := m.styleThemes[m.styleThemeIndex]
 	return lipgloss.PlaceHorizontal(
 		m.width,
 		lipgloss.Left,
 		m.styles.HeaderText.Render(text),
 		lipgloss.WithWhitespaceChars("/"),
-		lipgloss.WithWhitespaceForeground(lipgloss.Color("#7D56F4")),
+		lipgloss.WithWhitespaceForeground(theme.Base),
 	)
 }
 
 // appErrorBoundaryView renders a consistent error header for the application
 func (m model) appErrorBoundaryView(text string) string {
+	theme := m.styleThemes[m.styleThemeIndex]
 	return lipgloss.PlaceHorizontal(
 		m.width,
 		lipgloss.Left,
 		m.styles.ErrorHeaderText.Render(text),
 		lipgloss.WithWhitespaceChars("/"),
-		lipgloss.WithWhitespaceForeground(lipgloss.Color("#FF5F87")),
+		lipgloss.WithWhitespaceForeground(theme.Error),
 	)
 }
 
@@ -1183,9 +1292,14 @@ func buildSelectedMarkdown(m model) string {
 }
 
 // renderMarkdownToViewport uses Glamour to transform the raw markdown into styled text.
-func renderMarkdownToViewport(md string, vp *viewport.Model) error {
+func renderMarkdownToViewport(md string, vp *viewport.Model, theme StyleTheme) error {
+	// Create base styles using lipgloss
+	baseStyle := lipgloss.NewStyle().Foreground(theme.Base)
+	headerStyle := lipgloss.NewStyle().
+		Foreground(theme.Base).
+		Bold(true)
 
-	// Prepare a Glamour renderer using the dynamic width for proper word wrapping
+	// Prepare a Glamour renderer with minimal styling
 	r, err := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
 		glamour.WithWordWrap(len(md)),
@@ -1200,11 +1314,38 @@ func renderMarkdownToViewport(md string, vp *viewport.Model) error {
 		return err
 	}
 
-	// Ensure the rendered content ends with a newline for proper display
-	rendered = strings.TrimRight(rendered, "\n") + "\n"
+	// Post-process the rendered content to apply our styles
+	lines := strings.Split(rendered, "\n")
+	var styledLines []string
 
-	// Now set the content so that the viewport correctly computes the scrollable region
-	vp.SetContent(rendered)
+	for _, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "# "):
+			// H1 headers
+			line = headerStyle.Render(line)
+		case strings.HasPrefix(line, "## "):
+			// H2 headers
+			line = headerStyle.Render(line)
+		case strings.HasPrefix(line, "### "):
+			// H3 headers
+			line = headerStyle.Render(line)
+		default:
+			// Regular text
+			if strings.TrimSpace(line) != "" {
+				line = baseStyle.Render(line)
+			}
+		}
+		styledLines = append(styledLines, line)
+	}
+
+	// Join the lines back together
+	styledContent := strings.Join(styledLines, "\n")
+
+	// Ensure the rendered content ends with a newline for proper display
+	styledContent = strings.TrimRight(styledContent, "\n") + "\n"
+
+	// Set the content in the viewport
+	vp.SetContent(styledContent)
 	return nil
 }
 
@@ -1212,10 +1353,18 @@ func renderMarkdownToViewport(md string, vp *viewport.Model) error {
 func handleFormCompletion(m model) model {
 	// Build the Markdown
 	md := buildSelectedMarkdown(m)
-	if err := renderMarkdownToViewport(md, &m.viewport); err != nil {
+	theme := m.styleThemes[m.styleThemeIndex]
+	if err := renderMarkdownToViewport(md, &m.viewport, theme); err != nil {
 		logf("Error rendering markdown: %v", err)
 	}
 	m.content = md
+
+	// Update viewport style with theme colors
+	m.viewport.Style = lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(theme.Base).
+		PaddingLeft(2).
+		PaddingRight(2)
 
 	// Check if the active model has the required API key or base URL
 	activeModelConfig := m.config.Models[m.config.ActiveModel]
@@ -1231,7 +1380,7 @@ func handleFormCompletion(m model) model {
 
 	// Show a simple "Processing..." message in the viewport
 	processingMsg := fmt.Sprintf("## Processing with %s\n\nGenerating summary...", m.config.ActiveModel)
-	if err := renderMarkdownToViewport(processingMsg, &m.viewport); err != nil {
+	if err := renderMarkdownToViewport(processingMsg, &m.viewport, theme); err != nil {
 		logf("Error rendering processing message: %v", err)
 	}
 
@@ -1266,7 +1415,7 @@ func handleFormCompletion(m model) model {
 		// Show error in viewport
 		errorMsg := fmt.Sprintf("## Error\n\nFailed to get response from %s: %v\n\nCheck the log file for details.",
 			m.config.ActiveModel, err)
-		if err := renderMarkdownToViewport(errorMsg, &m.viewport); err != nil {
+		if err := renderMarkdownToViewport(errorMsg, &m.viewport, theme); err != nil {
 			logf("Error rendering error message: %v", err)
 		}
 	}
@@ -1302,7 +1451,7 @@ func makeLLMRequest(ctx context.Context, m *model, md string) error {
 	appendedContent := md + summary
 
 	// Step 3 - Re-render the viewport with the appended content
-	if err := renderMarkdownToViewport(appendedContent, &m.viewport); err != nil {
+	if err := renderMarkdownToViewport(appendedContent, &m.viewport, m.styleThemes[m.styleThemeIndex]); err != nil {
 		return fmt.Errorf("render markdown error: %v", err)
 	}
 	m.content = appendedContent
