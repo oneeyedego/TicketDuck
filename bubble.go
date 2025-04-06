@@ -240,7 +240,7 @@ type StyleTheme struct {
 // Available style themes
 var styleThemes = []StyleTheme{
 	{
-		Name: "Default",
+		Name: "Forest",
 		Base: lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#02BF87"},
 		Accent: lipgloss.AdaptiveColor{Light: "#7D56F4", Dark: "#7D56F4"},
 		Error: lipgloss.AdaptiveColor{Light: "#FF5F87", Dark: "#FF5F87"},
@@ -990,11 +990,28 @@ func (m model) View() string {
 		content = "Unknown mode."
 	}
 
-	// Add the status bar at the bottom
+	// Create the header with a simple divider
+	header := m.appBoundaryView("TicketDuck")
+
+	// Create the status bar
+	statusBar := m.renderStatusBar()
+
+	// Combine all components using vertical layout
+	theme := m.styleThemes[m.styleThemeIndex]
+	
+	// Only add border to content if not in display mode (since viewport has its own border)
+	contentStyle := lipgloss.NewStyle().Padding(1)
+	if m.currentMode != displayMode {
+		contentStyle = contentStyle.
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(theme.Base)
+	}
+
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		content,
-		"\n" + m.renderStatusBar(),
+		header,
+		contentStyle.Render(content),
+		statusBar,
 	)
 }
 
@@ -1174,8 +1191,7 @@ func (m model) viewQuestionMode() string {
 
 // View rendering for Display Mode
 func (m model) viewDisplayMode() string {
-	s := m.appBoundaryView("Generated Output") + "\n\n"
-	s += m.viewport.View()
+	s := m.viewport.View()
 	s += m.styles.Help.Render("\n↑/↓: Scroll • Ctrl+y to copy • Esc to return to menu • q to quit\n")
 	return s
 }
@@ -1306,7 +1322,10 @@ func (m model) appErrorBoundaryView(text string) string {
 func buildSelectedMarkdown(m model) string {
 	var sb strings.Builder
 
+	// Add form name
 	sb.WriteString(fmt.Sprintf("# %s\n\n", m.currentForm.name))
+
+	// Add questions
 	for i, question := range m.currentForm.questions {
 		sb.WriteString(fmt.Sprintf("## %d. %s\n\n", i+1, question))
 		if i < len(m.answers) {
@@ -1328,7 +1347,7 @@ func renderMarkdownToViewport(md string, vp *viewport.Model, theme StyleTheme) e
 	// Prepare a Glamour renderer with minimal styling
 	r, err := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
-		glamour.WithWordWrap(len(md)),
+		glamour.WithWordWrap(vp.Width),
 	)
 
 	if err != nil {
@@ -1345,23 +1364,27 @@ func renderMarkdownToViewport(md string, vp *viewport.Model, theme StyleTheme) e
 	var styledLines []string
 
 	for _, line := range lines {
+		// Remove any existing ANSI color codes
+		cleanLine := stripansi.Strip(line)
+
 		switch {
-		case strings.HasPrefix(line, "# "):
+		case strings.HasPrefix(cleanLine, "# "):
 			// H1 headers
-			line = headerStyle.Render(line)
-		case strings.HasPrefix(line, "## "):
+			styledLines = append(styledLines, headerStyle.Render(cleanLine))
+		case strings.HasPrefix(cleanLine, "## "):
 			// H2 headers
-			line = headerStyle.Render(line)
-		case strings.HasPrefix(line, "### "):
+			styledLines = append(styledLines, headerStyle.Render(cleanLine))
+		case strings.HasPrefix(cleanLine, "### "):
 			// H3 headers
-			line = headerStyle.Render(line)
+			styledLines = append(styledLines, headerStyle.Render(cleanLine))
 		default:
 			// Regular text
-			if strings.TrimSpace(line) != "" {
-				line = baseStyle.Render(line)
+			if strings.TrimSpace(cleanLine) != "" {
+				styledLines = append(styledLines, baseStyle.Render(cleanLine))
+			} else {
+				styledLines = append(styledLines, cleanLine)
 			}
 		}
-		styledLines = append(styledLines, line)
 	}
 
 	// Join the lines back together
@@ -1939,7 +1962,6 @@ func main() {
 
 // renderStatusBar creates a status bar showing the current mode and other relevant information
 func (m model) renderStatusBar() string {
-
 	// Get the current mode name
 	var modeName string
 	switch m.currentMode {
@@ -1963,10 +1985,14 @@ func (m model) renderStatusBar() string {
 	// Create the model indicator
 	modelInfo := m.styles.StatusText.Render(fmt.Sprintf(" Model: %s", m.config.ActiveModel))
 	
+	// Create the theme indicator
+	themeInfo := m.styles.StatusText.Render(fmt.Sprintf(" Theme: %s", m.styleThemes[m.styleThemeIndex].Name))
+	
 	// Join the components
 	bar := lipgloss.JoinHorizontal(lipgloss.Top,
 		modeIndicator,
 		modelInfo,
+		themeInfo,
 	)
 
 	// Render the full bar with the theme's status bar style
