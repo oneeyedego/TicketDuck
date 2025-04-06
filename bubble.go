@@ -270,7 +270,12 @@ type Styles struct {
 	StatusHeader,
 	Highlight,
 	ErrorHeaderText,
-	Help lipgloss.Style
+	Help,
+	// Status bar styles
+	StatusBar,
+	StatusText,
+	StatusNugget,
+	StatusMode lipgloss.Style
 }
 
 // NewStyles creates a new Styles instance with the given theme
@@ -298,6 +303,26 @@ func NewStyles(lg *lipgloss.Renderer, theme StyleTheme) *Styles {
 		Padding(0, 1, 0, 2)
 	s.Help = lg.NewStyle().
 		Foreground(lipgloss.AdaptiveColor{Light: "241", Dark: "241"})
+	
+	// Initialize status bar styles
+	s.StatusBar = lg.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "#343433", Dark: "#C1C6B2"}).
+		Background(lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#353533"})
+	
+	s.StatusText = lg.NewStyle().
+		Inherit(s.StatusBar)
+	
+	s.StatusNugget = lg.NewStyle().
+		Foreground(lipgloss.Color("#FFFDF5")).
+		Padding(0, 1)
+	
+	s.StatusMode = lg.NewStyle().
+		Inherit(s.StatusBar).
+		Foreground(lipgloss.Color("#FFFDF5")).
+		Background(theme.Base).
+		Padding(0, 1).
+		MarginRight(1)
+	
 	return &s
 }
 
@@ -946,30 +971,31 @@ func (m model) updateStyleSelectMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // --- [View] ----------------------------------------------------------------
 
 func (m model) View() string {
+	var content string
+	
 	switch m.currentMode {
-
 	case selectionMode:
-		return m.viewSelectionMode()
-
+		content = m.viewSelectionMode()
 	case questionMode:
-		return m.viewQuestionMode()
-
+		content = m.viewQuestionMode()
 	case displayMode:
-		return m.viewDisplayMode()
-
+		content = m.viewDisplayMode()
 	case apiKeyInputMode:
-		return m.viewAPIKeyInputMode()
-
+		content = m.viewAPIKeyInputMode()
 	case modelSelectMode:
-		return m.viewModelSelectMode()
-
+		content = m.viewModelSelectMode()
 	case styleSelectMode:
-		return m.viewStyleSelectMode()
-
+		content = m.viewStyleSelectMode()
 	default:
-		return "Unknown mode."
-
+		content = "Unknown mode."
 	}
+
+	// Add the status bar at the bottom
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		content,
+		"\n" + m.renderStatusBar(),
+	)
 }
 
 // View rendering for API Key Input Mode
@@ -1909,4 +1935,40 @@ func main() {
 	}
 
 	logf("TicketSummaryTool completed successfully")
+}
+
+// renderStatusBar creates a status bar showing the current mode and other relevant information
+func (m model) renderStatusBar() string {
+
+	// Get the current mode name
+	var modeName string
+	switch m.currentMode {
+	case selectionMode:
+		modeName = "Selection"
+	case questionMode:
+		modeName = "Question"
+	case displayMode:
+		modeName = "Display"
+	case apiKeyInputMode:
+		modeName = "API Config"
+	case modelSelectMode:
+		modeName = "Model Select"
+	case styleSelectMode:
+		modeName = "Style Select"
+	}
+
+	// Create the mode indicator
+	modeIndicator := m.styles.StatusMode.Render(modeName)
+	
+	// Create the model indicator
+	modelInfo := m.styles.StatusText.Render(fmt.Sprintf(" Model: %s", m.config.ActiveModel))
+	
+	// Join the components
+	bar := lipgloss.JoinHorizontal(lipgloss.Top,
+		modeIndicator,
+		modelInfo,
+	)
+
+	// Render the full bar with the theme's status bar style
+	return m.styles.StatusBar.Width(m.width).Render(bar)
 }
