@@ -227,6 +227,43 @@ func loadConfig() (Config, error) {
 
 // ---[ Lip Gloss Styles ]-----------------------------------------------------
 
+// Styles defines the styling for the application
+type Styles struct {
+	Base,
+	HeaderText,
+	Status,
+	StatusHeader,
+	Highlight,
+	ErrorHeaderText,
+	Help lipgloss.Style
+}
+
+// NewStyles creates a new Styles instance
+func NewStyles(lg *lipgloss.Renderer) *Styles {
+	s := Styles{}
+	s.Base = lg.NewStyle().
+		Padding(1, 4, 0, 1)
+	s.HeaderText = lg.NewStyle().
+		Foreground(lipgloss.Color("#7D56F4")).
+		Bold(true).
+		Padding(0, 1, 0, 2)
+	s.Status = lg.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#7D56F4")).
+		PaddingLeft(1).
+		MarginTop(1)
+	s.StatusHeader = lg.NewStyle().
+		Foreground(lipgloss.Color("#04B575")).
+		Bold(true)
+	s.Highlight = lg.NewStyle().
+		Foreground(lipgloss.Color("#212"))
+	s.ErrorHeaderText = s.HeaderText.
+		Foreground(lipgloss.Color("#FF5F87"))
+	s.Help = lg.NewStyle().
+		Foreground(lipgloss.Color("241"))
+	return &s
+}
+
 type formType struct {
 	name      string
 	questions []string
@@ -313,6 +350,7 @@ var (
 
 type model struct {
 	currentMode mode
+	styles      *Styles
 
 	// For selection mode:
 	formTypes     []formType
@@ -346,6 +384,8 @@ type model struct {
 	modelCursor   int
 	modelKeys     []string // Keys from the Models map for easier navigation
 	selectedModel string   // Currently selected model key
+
+	width int // Added for appBoundaryView
 }
 
 // initialModel sets up the choicebox, selection data, and an uninitialized viewport.
@@ -394,7 +434,7 @@ func initialModel() model {
 		initialMode = modelSelectMode
 	}
 
-	return model{
+	m := model{
 		currentMode:    initialMode,
 		formTypes:      formTypes,
 		selectedIndex:  -1,
@@ -409,7 +449,11 @@ func initialModel() model {
 		modelKeys:      modelKeys,
 		selectedModel:  config.ActiveModel,
 		modelCursor:    indexOf(modelKeys, config.ActiveModel),
+		styles:         NewStyles(lipgloss.DefaultRenderer()),
+		width:          80, // Assuming a default width
 	}
+
+	return m
 }
 
 // indexOf returns the index of a string in a slice, or 0 if not found
@@ -901,7 +945,7 @@ func (m model) viewAPIKeyInputMode() string {
 		}
 	}
 
-	s := titleStyle.Render(title) + "\n\n"
+	s := m.appBoundaryView(title) + "\n\n"
 
 	if isLocalModel {
 		// For local models, show both base URL and model name inputs
@@ -910,25 +954,25 @@ func (m model) viewAPIKeyInputMode() string {
 
 		// API Base URL field
 		if baseURLFocused {
-			s += selectedStyle.Render("API Base URL:") + "\n"
+			s += m.styles.Highlight.Render("API Base URL:") + "\n"
 		} else {
 			s += "API Base URL:" + "\n"
 		}
 		s += m.apiBaseInput.View() + "\n"
 
 		// Add URL hint for Ollama users
-		s += helpStyle.Render("For Ollama: Use http://localhost:11434 (without path segments)") + "\n\n"
+		s += m.styles.Help.Render("For Ollama: Use http://localhost:11434 (without path segments)") + "\n\n"
 
 		// Model Name field
 		if modelNameFocused {
-			s += selectedStyle.Render("Model Name:") + "\n"
+			s += m.styles.Highlight.Render("Model Name:") + "\n"
 		} else {
 			s += "Model Name:" + "\n"
 		}
 		s += m.modelNameInput.View() + "\n"
 
 		// Add model name hint for Ollama users
-		s += helpStyle.Render("For Ollama: Use exactly the model name shown in 'ollama list'") + "\n\n"
+		s += m.styles.Help.Render("For Ollama: Use exactly the model name shown in 'ollama list'") + "\n\n"
 	} else {
 		// For cloud models, show both API key and model name inputs
 		apiKeyFocused := m.focusedInput == 0
@@ -936,7 +980,7 @@ func (m model) viewAPIKeyInputMode() string {
 
 		// API Key field
 		if apiKeyFocused {
-			s += selectedStyle.Render("API Key:") + "\n"
+			s += m.styles.Highlight.Render("API Key:") + "\n"
 		} else {
 			s += "API Key:" + "\n"
 		}
@@ -944,16 +988,16 @@ func (m model) viewAPIKeyInputMode() string {
 
 		// Model Name field
 		if modelNameFocused {
-			s += selectedStyle.Render("Model Name:") + "\n"
+			s += m.styles.Highlight.Render("Model Name:") + "\n"
 		} else {
 			s += "Model Name:" + "\n"
 		}
 		s += m.modelNameInput.View() + "\n"
 
 		if modelConfig.Provider == ProviderAnthropic {
-			s += helpStyle.Render("For Claude: Examples include claude-3-opus-20240229, claude-3-sonnet-20240229, claude-3-haiku-20240307") + "\n\n"
+			s += m.styles.Help.Render("For Claude: Examples include claude-3-opus-20240229, claude-3-sonnet-20240229, claude-3-haiku-20240307") + "\n\n"
 		} else if modelConfig.Provider == ProviderOpenAI {
-			s += helpStyle.Render("For OpenAI: Examples include gpt-3.5-turbo, gpt-4, gpt-4-turbo") + "\n\n"
+			s += m.styles.Help.Render("For OpenAI: Examples include gpt-3.5-turbo, gpt-4, gpt-4-turbo") + "\n\n"
 		}
 	}
 
@@ -965,41 +1009,41 @@ func (m model) viewAPIKeyInputMode() string {
 
 	saveFocused := m.focusedInput == 2
 	if saveFocused {
-		s += selectedStyle.Render(saveText) + "\n\n"
+		s += m.styles.Highlight.Render(saveText) + "\n\n"
 	} else {
 		s += saveText + "\n\n"
 	}
 
 	// Help text
-	s += helpStyle.Render("↑/↓: Cycle through fields • Space: Toggle checkbox • Enter: Confirm")
+	s += m.styles.Help.Render("↑/↓: Cycle through fields • Space: Toggle checkbox • Enter: Confirm")
 
 	return s
 }
 
 // View rendering for Selection Mode
 func (m model) viewSelectionMode() string {
-	s := titleStyle.Render("Select Report Type") + "\n\n"
+	s := m.appBoundaryView("Select Report Type") + "\n\n"
 
 	for i, rt := range m.formTypes {
 		cursor := "  "
 		if m.cursor == i {
-			cursor = cursorStyle.Render(">")
+			cursor = m.styles.Highlight.Render(">")
 		}
 
 		line := fmt.Sprintf("%s %s", cursor, rt.name)
 
 		if m.cursor == i {
-			line = selectedStyle.Render(line)
+			line = m.styles.Highlight.Render(line)
 		} else {
-			line = dimStyle.Render(line)
+			line = m.styles.Help.Render(line)
 		}
 
 		s += line + "\n"
 	}
 
-	s += "\nUse ↑/↓ or k/j to navigate. Press Enter or Space to select.\n"
-	s += fmt.Sprintf("Current model: %s\n", m.config.ActiveModel)
-	s += "Press ~ to change model. Press q to quit.\n"
+	s += "\n" + m.styles.Help.Render("Use ↑/↓ or j/k to navigate. Press Enter or Space to select.") + "\n"
+	s += m.styles.Help.Render(fmt.Sprintf("Current model: %s", m.config.ActiveModel)) + "\n"
+	s += m.styles.Help.Render("Press ~ to change model. Press q to quit.") + "\n"
 
 	return s
 }
@@ -1009,34 +1053,34 @@ func (m model) viewQuestionMode() string {
 	currentQ := m.currentForm.questions[m.currentQuestion]
 	inputLine := "> " + m.inputString
 
-	s := titleStyle.Render(fmt.Sprintf("%s - Question %d/%d", m.currentForm.name, m.currentQuestion+1, len(m.currentForm.questions))) + "\n\n"
-	s += fmt.Sprintf("**%s**\n\n", currentQ)
+	s := m.appBoundaryView(fmt.Sprintf("%s - Question %d/%d", m.currentForm.name, m.currentQuestion+1, len(m.currentForm.questions))) + "\n\n"
+	s += m.styles.Highlight.Render(fmt.Sprintf("**%s**", currentQ)) + "\n\n"
 	s += inputLine
 
-	s += "\n\nPress Enter to submit your answer.\n"
-	s += "Press Ctrl+s to skip this question.\n"
-	s += "Press Esc to quit.\n"
+	s += "\n\n" + m.styles.Help.Render("Press Enter to submit your answer.") + "\n"
+	s += m.styles.Help.Render("Press Ctrl+s to skip this question.") + "\n"
+	s += m.styles.Help.Render("Press Esc to quit.") + "\n"
 
 	return s
 }
 
 // View rendering for Display Mode
 func (m model) viewDisplayMode() string {
-	s := titleStyle.Render("Generated Output") + "\n\n"
-	s += m.viewport.View() + helpStyle.Render("\n  ↑/↓: Scroll • q: Quit • Ctrl+y to copy to clipboard\n")
+	s := m.appBoundaryView("Generated Output") + "\n\n"
+	s += m.viewport.View() + m.styles.Help.Render("\n  ↑/↓: Scroll • q: Quit • Ctrl+y to copy to clipboard\n")
 	return s
 }
 
 // viewModelSelectMode renders the model selection interface
 func (m model) viewModelSelectMode() string {
-	s := titleStyle.Render("Select AI Provider") + "\n\n"
+	s := m.appBoundaryView("Select AI Provider") + "\n\n"
 
 	for i, key := range m.modelKeys {
 		modelConfig := m.config.Models[key]
 
 		cursor := "  "
 		if m.modelCursor == i {
-			cursor = cursorStyle.Render(">")
+			cursor = m.styles.Highlight.Render(">")
 		}
 
 		// Get a user-friendly provider name
@@ -1070,30 +1114,52 @@ func (m model) viewModelSelectMode() string {
 		// Show configuration status
 		status := ""
 		if modelConfig.Provider != ProviderLocal && modelConfig.APIKey != "" {
-			status = " ✓"
+			status = m.styles.StatusHeader.Render(" ✓")
 		} else if modelConfig.Provider == ProviderLocal && modelConfig.APIBaseURL != "" {
-			status = " ✓"
+			status = m.styles.StatusHeader.Render(" ✓")
 		}
 
 		line := fmt.Sprintf("%s %s%s", cursor, modelInfo, status)
 
 		if m.modelCursor == i {
-			line = selectedStyle.Render(line)
+			line = m.styles.Highlight.Render(line)
 		} else {
-			line = dimStyle.Render(line)
+			line = m.styles.Help.Render(line)
 		}
 
 		s += line + "\n"
 	}
 
-	s += "\nUse ↑/↓ or k/j to navigate. Press Enter or Space to select.\n"
-	s += "Press c to configure the selected provider and model name.\n"
+	s += "\n" + m.styles.Help.Render("Use ↑/↓ or j/k to navigate. Press Enter or Space to select.") + "\n"
+	s += m.styles.Help.Render("Press c to configure the selected provider and model name.") + "\n"
 	if m.config.ActiveModel != "" {
-		s += fmt.Sprintf("Current model: %s - %s\n", m.config.ActiveModel, m.config.Models[m.config.ActiveModel].ModelName)
+		s += m.styles.Help.Render(fmt.Sprintf("Current model: %s - %s", m.config.ActiveModel, m.config.Models[m.config.ActiveModel].ModelName)) + "\n"
 	}
-	s += "Press q to quit.\n"
+	s += m.styles.Help.Render("Press q to quit.") + "\n"
 
 	return s
+}
+
+// appBoundaryView renders a consistent header for the application
+func (m model) appBoundaryView(text string) string {
+	return lipgloss.PlaceHorizontal(
+		m.width,
+		lipgloss.Left,
+		m.styles.HeaderText.Render(text),
+		lipgloss.WithWhitespaceChars("/"),
+		lipgloss.WithWhitespaceForeground(lipgloss.Color("#7D56F4")),
+	)
+}
+
+// appErrorBoundaryView renders a consistent error header for the application
+func (m model) appErrorBoundaryView(text string) string {
+	return lipgloss.PlaceHorizontal(
+		m.width,
+		lipgloss.Left,
+		m.styles.ErrorHeaderText.Render(text),
+		lipgloss.WithWhitespaceChars("/"),
+		lipgloss.WithWhitespaceForeground(lipgloss.Color("#FF5F87")),
+	)
 }
 
 // --- [ I/O ] ------------------------------------
