@@ -230,34 +230,34 @@ func loadConfig() (Config, error) {
 
 // StyleTheme represents a predefined style theme
 type StyleTheme struct {
-	Name  string
-	Base  lipgloss.AdaptiveColor
-	Accent lipgloss.AdaptiveColor
-	Error  lipgloss.AdaptiveColor
+	Name    string
+	Base    lipgloss.AdaptiveColor
+	Accent  lipgloss.AdaptiveColor
+	Error   lipgloss.AdaptiveColor
 	Success lipgloss.AdaptiveColor
 }
 
 // Available style themes
 var styleThemes = []StyleTheme{
 	{
-		Name: "Forest",
-		Base: lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#02BF87"},
-		Accent: lipgloss.AdaptiveColor{Light: "#7D56F4", Dark: "#7D56F4"},
-		Error: lipgloss.AdaptiveColor{Light: "#FF5F87", Dark: "#FF5F87"},
+		Name:    "Forest",
+		Base:    lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#64fffda"},
+		Accent:  lipgloss.AdaptiveColor{Light: "#7D56F4", Dark: "#7D56F4"},
+		Error:   lipgloss.AdaptiveColor{Light: "#FF5F87", Dark: "#FF5F87"},
 		Success: lipgloss.AdaptiveColor{Light: "#02BA84", Dark: "#02BF87"},
 	},
 	{
-		Name: "Ocean",
-		Base: lipgloss.AdaptiveColor{Light: "#5A56E0", Dark: "#7571F9"},
-		Accent: lipgloss.AdaptiveColor{Light: "#00B4D8", Dark: "#00B4D8"},
-		Error: lipgloss.AdaptiveColor{Light: "#FF6B6B", Dark: "#FF6B6B"},
+		Name:    "Ocean",
+		Base:    lipgloss.AdaptiveColor{Light: "#5A56E0", Dark: "#0c8ffa"},
+		Accent:  lipgloss.AdaptiveColor{Light: "#00B4D8", Dark: "#00B4D8"},
+		Error:   lipgloss.AdaptiveColor{Light: "#FF6B6B", Dark: "#FF6B6B"},
 		Success: lipgloss.AdaptiveColor{Light: "#4ECDC4", Dark: "#4ECDC4"},
 	},
 	{
-		Name: "Sunset",
-		Base: lipgloss.AdaptiveColor{Light: "#FF6B6B", Dark: "#FF6B6B"},
-		Accent: lipgloss.AdaptiveColor{Light: "#FFD166", Dark: "#FFD166"},
-		Error: lipgloss.AdaptiveColor{Light: "#EF476F", Dark: "#EF476F"},
+		Name:    "Sunset",
+		Base:    lipgloss.AdaptiveColor{Light: "#FF6B6B", Dark: "#FF6B6B"},
+		Accent:  lipgloss.AdaptiveColor{Light: "#FFD166", Dark: "#FFD166"},
+		Error:   lipgloss.AdaptiveColor{Light: "#EF476F", Dark: "#EF476F"},
 		Success: lipgloss.AdaptiveColor{Light: "#06D6A0", Dark: "#06D6A0"},
 	},
 }
@@ -303,26 +303,26 @@ func NewStyles(lg *lipgloss.Renderer, theme StyleTheme) *Styles {
 		Padding(0, 1, 0, 2)
 	s.Help = lg.NewStyle().
 		Foreground(lipgloss.AdaptiveColor{Light: "241", Dark: "241"})
-	
+
 	// Initialize status bar styles
 	s.StatusBar = lg.NewStyle().
 		Foreground(lipgloss.AdaptiveColor{Light: "#343433", Dark: "#C1C6B2"}).
 		Background(lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#353533"})
-	
+
 	s.StatusText = lg.NewStyle().
 		Inherit(s.StatusBar)
-	
+
 	s.StatusNugget = lg.NewStyle().
 		Foreground(lipgloss.Color("#FFFDF5")).
 		Padding(0, 1)
-	
+
 	s.StatusMode = lg.NewStyle().
 		Inherit(s.StatusBar).
 		Foreground(lipgloss.Color("#FFFDF5")).
 		Background(theme.Base).
 		Padding(0, 1).
 		MarginRight(1)
-	
+
 	return &s
 }
 
@@ -501,24 +501,24 @@ func initialModel() model {
 	}
 
 	m := model{
-		currentMode:    initialMode,
-		formTypes:      formTypes,
-		selectedIndex:  -1,
-		answers:        []string{},
-		viewport:       viewport.Model{}, // We'll configure this later
-		apiKeyInput:    tiKey,
-		apiBaseInput:   tiBase,
-		modelNameInput: tiModelName,
-		focusedInput:   0,
-		saveConfig:     true,
-		config:         config,
-		modelKeys:      modelKeys,
-		selectedModel:  config.ActiveModel,
-		modelCursor:    indexOf(modelKeys, config.ActiveModel),
+		currentMode:     initialMode,
+		formTypes:       formTypes,
+		selectedIndex:   -1,
+		answers:         []string{},
+		viewport:        viewport.Model{}, // We'll configure this later
+		apiKeyInput:     tiKey,
+		apiBaseInput:    tiBase,
+		modelNameInput:  tiModelName,
+		focusedInput:    0,
+		saveConfig:      true,
+		config:          config,
+		modelKeys:       modelKeys,
+		selectedModel:   config.ActiveModel,
+		modelCursor:     indexOf(modelKeys, config.ActiveModel),
 		styleThemes:     styleThemes,
 		styleThemeIndex: 0,
-		styles:         NewStyles(lipgloss.DefaultRenderer(), styleThemes[0]),
-		width:          80, // Assuming a default width
+		styles:          NewStyles(lipgloss.DefaultRenderer(), styleThemes[0]),
+		width:           80, // Assuming a default width
 	}
 
 	return m
@@ -582,20 +582,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Handle other message types based on current mode
 	case tea.KeyMsg:
 		// Global key handlers that work in any mode
-		switch msg.String() {
-		case "q":
+		switch msg.Type {
+		case tea.KeyCtrlQ:
 			return m, tea.Quit
-		case "esc":
+		case tea.KeyEsc:
 			// Return to main menu from any mode except selection mode
 			if m.currentMode != selectionMode {
 				m.currentMode = selectionMode
 				return m, nil
 			}
-		case "~":
-			// Add global shortcut to switch to model selection mode
-			m.currentMode = modelSelectMode
-			return m, nil
-		case "ctrl+t":
+		case tea.KeyRunes:
+			if msg.String() == "~" {
+				// Add global shortcut to switch to model selection mode
+				m.currentMode = modelSelectMode
+				return m, nil
+			}
+		case tea.KeyCtrlT:
 			// Add global shortcut to switch to style selection mode
 			m.currentMode = styleSelectMode
 			return m, nil
@@ -740,21 +742,21 @@ func (m model) updateAPIKeyInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) updateSelectionMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-
 	case tea.KeyMsg:
-		switch msg.String() {
-
-		case "q":
+		switch msg.Type {
+		case tea.KeyCtrlQ:
 			return m, tea.Quit
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
+		case tea.KeyUp, tea.KeyDown, tea.KeyRunes:
+			if msg.Type == tea.KeyUp || (msg.Type == tea.KeyRunes && msg.String() == "k") {
+				if m.cursor > 0 {
+					m.cursor--
+				}
+			} else if msg.Type == tea.KeyDown || (msg.Type == tea.KeyRunes && msg.String() == "j") {
+				if m.cursor < len(m.formTypes)-1 {
+					m.cursor++
+				}
 			}
-		case "down", "j":
-			if m.cursor < len(m.formTypes)-1 {
-				m.cursor++
-			}
-		case " ", "enter":
+		case tea.KeySpace, tea.KeyEnter:
 			if m.currentMode == selectionMode {
 				// Toggle selection: since it's single-selection,
 				// selecting a new item deselects the previous one.
@@ -771,7 +773,6 @@ func (m model) updateSelectionMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-
 	return m, nil
 }
 
@@ -817,7 +818,6 @@ func (m model) updateQuestionMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-
 	return m, nil
 }
 
@@ -906,18 +906,36 @@ func (m model) updateDisplayMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // updateModelSelectMode handles user input in the model selection mode
 func (m model) updateModelSelectMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "q":
+	switch msg.Type {
+	case tea.KeyCtrlQ:
 		return m, tea.Quit
-	case "up", "k":
-		if m.modelCursor > 0 {
-			m.modelCursor--
+	case tea.KeyUp, tea.KeyDown:
+		if msg.Type == tea.KeyUp {
+			if m.modelCursor > 0 {
+				m.modelCursor--
+			}
+		} else {
+			if m.modelCursor < len(m.modelKeys)-1 {
+				m.modelCursor++
+			}
 		}
-	case "down", "j":
-		if m.modelCursor < len(m.modelKeys)-1 {
-			m.modelCursor++
+	case tea.KeyRunes:
+		switch msg.String() {
+		case "k":
+			if m.modelCursor > 0 {
+				m.modelCursor--
+			}
+		case "j":
+			if m.modelCursor < len(m.modelKeys)-1 {
+				m.modelCursor++
+			}
+		case "c":
+			// Configure the model at the current cursor position
+			m.selectedModel = m.modelKeys[m.modelCursor]
+			m.config.ActiveModel = m.selectedModel
+			m.currentMode = apiKeyInputMode
 		}
-	case " ", "enter":
+	case tea.KeySpace, tea.KeyEnter:
 		// Select the model at the current cursor position
 		m.selectedModel = m.modelKeys[m.modelCursor]
 		m.config.ActiveModel = m.selectedModel
@@ -937,32 +955,39 @@ func (m model) updateModelSelectMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Otherwise go to form selection mode
 			m.currentMode = selectionMode
 		}
-	case "c":
-		// Configure the model at the current cursor position
-		m.selectedModel = m.modelKeys[m.modelCursor]
-		m.config.ActiveModel = m.selectedModel
-		m.currentMode = apiKeyInputMode
 	}
-
 	return m, nil
 }
 
 // updateStyleSelectMode handles user input in the style selection mode
 func (m model) updateStyleSelectMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "up", "k":
-		if m.styleThemeIndex > 0 {
-			m.styleThemeIndex--
+	switch msg.Type {
+	case tea.KeyUp, tea.KeyDown:
+		if msg.Type == tea.KeyUp {
+			if m.styleThemeIndex > 0 {
+				m.styleThemeIndex--
+			}
+		} else {
+			if m.styleThemeIndex < len(m.styleThemes)-1 {
+				m.styleThemeIndex++
+			}
 		}
-	case "down", "j":
-		if m.styleThemeIndex < len(m.styleThemes)-1 {
-			m.styleThemeIndex++
+	case tea.KeyRunes:
+		switch msg.String() {
+		case "k":
+			if m.styleThemeIndex > 0 {
+				m.styleThemeIndex--
+			}
+		case "j":
+			if m.styleThemeIndex < len(m.styleThemes)-1 {
+				m.styleThemeIndex++
+			}
 		}
-	case "enter":
+	case tea.KeyEnter:
 		// Apply the selected theme
 		m.styles = NewStyles(lipgloss.DefaultRenderer(), m.styleThemes[m.styleThemeIndex])
 		m.currentMode = selectionMode // Return to selection mode
-	case "esc":
+	case tea.KeyEsc:
 		m.currentMode = selectionMode // Return to selection mode
 	}
 	return m, nil
@@ -972,7 +997,7 @@ func (m model) updateStyleSelectMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	var content string
-	
+
 	switch m.currentMode {
 	case selectionMode:
 		content = m.viewSelectionMode()
@@ -998,7 +1023,7 @@ func (m model) View() string {
 
 	// Combine all components using vertical layout
 	theme := m.styleThemes[m.styleThemeIndex]
-	
+
 	// Only add border to content if not in display mode (since viewport has its own border)
 	contentStyle := lipgloss.NewStyle().Padding(1)
 	if m.currentMode != displayMode {
@@ -1141,7 +1166,7 @@ func (m model) viewAPIKeyInputMode() string {
 
 	// Help text
 	s += m.styles.Help.Render("↑/↓: Cycle through fields • Space: Toggle checkbox • Enter: Confirm") + "\n"
-	s += m.styles.Help.Render("Esc to return to menu • q to quit")
+	s += m.styles.Help.Render("Esc to return to menu • Ctrl+q to quit")
 
 	return s
 }
@@ -1169,7 +1194,7 @@ func (m model) viewSelectionMode() string {
 
 	s += "\n" + m.styles.Help.Render("Use ↑/↓ or j/k to navigate • Enter to select") + "\n"
 	s += m.styles.Help.Render(fmt.Sprintf("Current model: %s", m.config.ActiveModel)) + "\n"
-	s += m.styles.Help.Render("~ to change model • Ctrl+t to change theme • q to quit") + "\n"
+	s += m.styles.Help.Render("~ to change model • Ctrl+t to change theme • Ctrl+q to quit") + "\n"
 
 	return s
 }
@@ -1184,7 +1209,7 @@ func (m model) viewQuestionMode() string {
 	s += inputLine
 
 	s += "\n\n" + m.styles.Help.Render("Enter to submit • Ctrl+s to skip") + "\n"
-	s += m.styles.Help.Render("Esc to return to menu • q to quit") + "\n"
+	s += m.styles.Help.Render("Esc to return to menu • Ctrl+q to quit") + "\n"
 
 	return s
 }
@@ -1192,7 +1217,7 @@ func (m model) viewQuestionMode() string {
 // View rendering for Display Mode
 func (m model) viewDisplayMode() string {
 	s := m.viewport.View()
-	s += m.styles.Help.Render("\n↑/↓: Scroll • Ctrl+y to copy • Esc to return to menu • q to quit\n")
+	s += m.styles.Help.Render("\n↑/↓: Scroll • Ctrl+y to copy • Esc to return to menu • Ctrl+q to quit\n")
 	return s
 }
 
@@ -1260,7 +1285,7 @@ func (m model) viewModelSelectMode() string {
 	if m.config.ActiveModel != "" {
 		s += m.styles.Help.Render(fmt.Sprintf("Current model: %s - %s", m.config.ActiveModel, m.config.Models[m.config.ActiveModel].ModelName)) + "\n"
 	}
-	s += m.styles.Help.Render("Esc to return to menu • q to quit") + "\n"
+	s += m.styles.Help.Render("Esc to return to menu • Ctrl+q to quit") + "\n"
 
 	return s
 }
@@ -1284,7 +1309,7 @@ func (m model) viewStyleSelectMode() string {
 	}
 
 	s += "\n" + m.styles.Help.Render("Use ↑/↓ to navigate • Enter to select") + "\n"
-	s += m.styles.Help.Render("Esc to return to menu • q to quit") + "\n"
+	s += m.styles.Help.Render("Esc to return to menu • Ctrl+q to quit") + "\n"
 
 	return s
 }
@@ -1979,17 +2004,21 @@ func (m model) renderStatusBar() string {
 		modeName = "Style Select"
 	}
 
+	// Create the duck emoji with monochrome styling
+	duck := m.styles.StatusText.Render(" 🦆 ")
+
 	// Create the mode indicator
 	modeIndicator := m.styles.StatusMode.Render(modeName)
-	
+
 	// Create the model indicator
 	modelInfo := m.styles.StatusText.Render(fmt.Sprintf(" Model: %s", m.config.ActiveModel))
-	
+
 	// Create the theme indicator
 	themeInfo := m.styles.StatusText.Render(fmt.Sprintf(" Theme: %s", m.styleThemes[m.styleThemeIndex].Name))
-	
+
 	// Join the components
 	bar := lipgloss.JoinHorizontal(lipgloss.Top,
+		duck,
 		modeIndicator,
 		modelInfo,
 		themeInfo,
