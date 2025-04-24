@@ -31,4 +31,6 @@ Other non-standard dependencies:
 
 Supported platforms: GNU/Linux, MacOS, BSD
 
-Knock yourself out platforms: Windows 
+
+For submitting issues, we ask that you try using the tool to do so, and if you run into any unexpected behavior, we ask that you attach the client logs, which should be located in ~/.ticketduck/logs/ .
+

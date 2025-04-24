@@ -33,20 +33,14 @@ import (
 //
 // This section defines the logging functionality for the application.
 //
-// The logging is used to record the state and behavior of the application.
-// It is stored in a file in the user's home directory.
-//
-// I'm using this to debug the application, but I might delete it before finalizing the project.
+// Log files are stored in a directory in the user's home directory (~/.ticketduck/logs/).
 
 // Initialize the logger
 var (
-	// Placeholder for our file logger
-	logger *log.Logger
-	// Log file handle
+	logger  *log.Logger
 	logFile *os.File
 )
 
-// setupLogging initializes file-based logging
 func setupLogging() error {
 	// Create logs directory if it doesn't exist
 	logsDir := filepath.Join(getConfigDir(), "logs")
@@ -56,7 +50,7 @@ func setupLogging() error {
 
 	// Create log file with timestamp
 	timestamp := time.Now().Format("2006-01-02_15-04-05")
-	logFilePath := filepath.Join(logsDir, fmt.Sprintf("ticketsummarytool_%s.log", timestamp))
+	logFilePath := filepath.Join(logsDir, fmt.Sprintf("ticketduck_%s.log", timestamp))
 
 	var err error
 	logFile, err = os.Create(logFilePath)
@@ -154,17 +148,17 @@ func getConfigDir() string {
 	// First try to use the XDG_CONFIG_HOME environment variable
 	configDir := os.Getenv("XDG_CONFIG_HOME")
 	if configDir != "" {
-		return filepath.Join(configDir, "ticketsummarytool")
+		return filepath.Join(configDir, "ticketduck")
 	}
 
 	// Fall back to the user's home directory
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		log.Printf("Warning: Could not get user home directory: %v\n", err)
-		return ".ticketsummarytool" // Use current directory as fallback
+		return ".ticketduck" // Use current directory as fallback
 	}
 
-	return filepath.Join(homeDir, ".ticketsummarytool")
+	return filepath.Join(homeDir, ".ticketduck")
 }
 
 // saveConfig saves the configuration to the config file
@@ -663,7 +657,7 @@ func (m model) updateAPIKeyInputMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				APIBaseURL: baseURL,
 			}
 		} else {
-			// For cloud models, we need to save the API key and model name
+			// For remote models, we need to save the API key and model name
 			apiKey := strings.TrimSpace(m.apiKeyInput.Value())
 			modelName := strings.TrimSpace(m.modelNameInput.Value())
 
@@ -1456,7 +1450,7 @@ func handleFormCompletion(m model) model {
 		return m
 	}
 
-	// Create a channel to capture the ChatGPT request result
+	// Create a channel to capture the API request result
 	done := make(chan error, 1)
 
 	// Show a simple "Processing..." message in the viewport
@@ -1465,7 +1459,7 @@ func handleFormCompletion(m model) model {
 		logf("Error rendering processing message: %v", err)
 	}
 
-	// Launch ChatGPT request concurrently
+	// Launch API request concurrently
 	go func() {
 		err := makeLLMRequest(context.TODO(), &m, md)
 		done <- err
@@ -1490,7 +1484,7 @@ func handleFormCompletion(m model) model {
 		}
 	}()
 
-	// Wait for the ChatGPT request to complete
+	// Wait for the API request to complete
 	if err := <-done; err != nil {
 		logf("Error from LLM: %v", err)
 		// Show error in viewport
@@ -1501,7 +1495,7 @@ func handleFormCompletion(m model) model {
 		}
 	}
 
-	// Cancel the spinner once the ChatGPT request is done
+	// Cancel the spinner once the API request is done
 	cancelSpinner()
 
 	logf("Request completed")
@@ -2011,7 +2005,6 @@ func (m model) renderStatusBar() string {
 		modeName = "Style Select"
 	}
 
-	// Create the duck emoji with monochrome styling
 	duck := m.styles.StatusText.Render(" 🦆 ")
 
 	// Create the mode indicator
