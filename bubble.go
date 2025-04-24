@@ -240,8 +240,15 @@ type StyleTheme struct {
 // Available style themes
 var styleThemes = []StyleTheme{
 	{
+		Name:    "Normal",
+		Base:    lipgloss.AdaptiveColor{Light: "#a5b342", Dark: "#a5b342"},
+		Accent:  lipgloss.AdaptiveColor{Light: "#FFFAFF", Dark: "#808080"},
+		Error:   lipgloss.AdaptiveColor{Light: "#FFFAFF", Dark: "#808080"},
+		Success: lipgloss.AdaptiveColor{Light: "#FFFAFF", Dark: "#808080"},
+	},
+	{
 		Name:    "Forest",
-		Base:    lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#64fffda"},
+		Base:    lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#25cc6a"},
 		Accent:  lipgloss.AdaptiveColor{Light: "#7D56F4", Dark: "#7D56F4"},
 		Error:   lipgloss.AdaptiveColor{Light: "#FF5F87", Dark: "#FF5F87"},
 		Success: lipgloss.AdaptiveColor{Light: "#02BA84", Dark: "#02BF87"},
@@ -296,7 +303,7 @@ func NewStyles(lg *lipgloss.Renderer, theme StyleTheme) *Styles {
 		Foreground(theme.Base).
 		Bold(true)
 	s.Highlight = lg.NewStyle().
-		Foreground(theme.Base)
+		Foreground(theme.Accent) // Use Accent color for highlighting
 	s.ErrorHeaderText = lg.NewStyle().
 		Foreground(theme.Error).
 		Bold(true).
