@@ -1974,7 +1974,7 @@ func main() {
 	}
 	defer closeLogging()
 
-	logf("Starting TicketSummaryTool")
+	logf("Starting TicketDuck")
 
 	p := tea.NewProgram(initialModel())
 	if err := p.Start(); err != nil {
@@ -1983,7 +1983,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logf("TicketSummaryTool completed successfully")
+	logf("TicketDuck completed successfully")
 }
 
 // renderStatusBar creates a status bar showing the current mode and other relevant information

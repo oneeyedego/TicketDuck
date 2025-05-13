@@ -1,4 +1,4 @@
-module ticketsummarytool
+module ticketduck
 
 go 1.23.0
 

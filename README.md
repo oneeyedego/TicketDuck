@@ -3,6 +3,9 @@
 </p>
 
 ## TicketDuck
+
+Supported platforms: GNU/Linux, MacOS, BSD
+
 Like a rubber ducky that talks back, TicketDuck is a lightweight tool that helps you make your messy stream-of-consciousness more coherent (your friends and colleagues will thank you). 
 
 Will it literally debug your life? Absolutely not. How about make you a better leader and team member? Maybe, but that's a lot to ask of a tiny program. Will it make documenting your troubleshooting and development thought process easier? Hopefully yes!
@@ -15,6 +18,11 @@ There's no one right way to use this tool, but here's a suggestion:
 
 ### Getting started
 
+  - To launch the application, navigate to the installation directory and run
+    - ```go mod tidy``` (To download the package dependencies)
+    - ```go build``` (To build the binary)
+    - ```./ticketduck``` (To execute the binary)
+    - The binary can then be added to your PATH as needed. 
   - After launching the application, configure the model that you'd like to use.
   - Once that's done, select your form type from the main menu.
   - Answer each question in the form, or skip the ones that you don't like. 
@@ -77,9 +85,6 @@ Other non-standard dependencies:
 - https://github.com/openai/openai-go (OpenAI API for Go)
 - https://github.com/acarl005/stripansi (Helps format TUI output)
 - https://github.com/atotto/clipboard (Takes that output and pipes it to the clipboard)
-
-Supported platforms: GNU/Linux, MacOS, BSD
-
 
 For submitting issues, we ask that you try using the tool to do so, and if you run into any unexpected behavior, we ask that you attach the client logs, which should be located in ```~/.ticketduck/logs/``` .
 
